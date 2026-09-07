@@ -1,0 +1,375 @@
+:root {
+  --cyan: #63d9ff;
+  --amber: #ffd166;
+  --pink: #ff5ec8;
+  --mint: #7ef7c8;
+  --ink: #05070f;
+  --panel: rgba(8, 14, 26, 0.92);
+  --line: rgba(120, 170, 210, 0.28);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #02030a;
+  color: #e8f2ff;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+body {
+  display: grid;
+  place-items: center;
+}
+
+#wrap {
+  position: relative;
+  line-height: 0;
+  box-shadow: 0 0 60px rgba(60, 140, 220, 0.14);
+}
+
+#canvas-mount canvas {
+  display: block;
+}
+
+/* ---------------------------------------------------------- 解放ボタン */
+#release-btn {
+  position: absolute;
+  right: 4%;
+  bottom: 6%;
+  width: 22%;
+  aspect-ratio: 1;
+  min-width: 62px;
+  border-radius: 50%;
+  border: 2px solid var(--stage-color, #63d9ff);
+  background: radial-gradient(circle at 50% 50%, rgba(10, 20, 34, 0.9), rgba(6, 12, 22, 0.75));
+  color: #eaf7ff;
+  font: 700 clamp(11px, 3.4vw, 15px) / 1 inherit;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.08s ease, opacity 0.12s ease;
+  box-shadow: 0 0 18px rgba(99, 217, 255, 0.28);
+}
+
+#release-btn .ring {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--stage-color, #63d9ff) calc(var(--t, 0) * 360deg),
+    rgba(255, 255, 255, 0.07) 0
+  );
+  mask: radial-gradient(circle, transparent 62%, #000 64%);
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%);
+}
+
+#release-btn .label {
+  position: relative;
+  letter-spacing: 0.08em;
+}
+
+#release-btn[data-armed='0'] {
+  opacity: 0.45;
+  filter: saturate(0.4);
+}
+
+#release-btn[data-armed='1'] {
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+#release-btn:active {
+  transform: scale(0.93);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 16px rgba(99, 217, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px var(--stage-color, #63d9ff);
+  }
+}
+
+/* ---------------------------------------------------------- ポーズ */
+#pause-btn {
+  position: absolute;
+  right: 2%;
+  top: 1.2%;
+  width: 26px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: rgba(6, 12, 22, 0.55);
+  color: #9fb6c8;
+  font: 700 10px/1 inherit;
+  letter-spacing: 1px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ---------------------------------------------------------- 画面 */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 5% 6%;
+  line-height: 1.5;
+  font-size: clamp(11px, 3.1vw, 14px);
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(3, 6, 14, 0.82), rgba(3, 6, 14, 0.95));
+  backdrop-filter: blur(2px);
+}
+
+/* 片手操作前提なので、選択肢は親指の届く下側に寄せる */
+.screen.bottom {
+  justify-content: flex-end;
+  padding-bottom: 12%;
+}
+
+.screen.hidden,
+.hidden {
+  display: none !important;
+}
+
+.screen h1 {
+  margin: 0;
+  font-size: clamp(20px, 6.6vw, 30px);
+  letter-spacing: 0.06em;
+  background: linear-gradient(90deg, var(--cyan), var(--pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.screen h2 {
+  margin: 0;
+  font-size: clamp(15px, 4.6vw, 20px);
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+
+.screen p {
+  margin: 0;
+  color: #a9c0d4;
+}
+
+.sub {
+  font-size: 0.86em;
+  color: #7f97ac;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  text-align: left;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cyan);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  padding: 9px 11px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.08s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.card:active {
+  transform: scale(0.985);
+}
+
+.card .name {
+  font-weight: 700;
+  font-size: 1.02em;
+}
+
+.card .desc {
+  color: #9db4c8;
+  font-size: 0.85em;
+  margin-top: 2px;
+}
+
+.card .badge {
+  display: inline-block;
+  font-size: 0.7em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: rgba(99, 217, 255, 0.16);
+  color: var(--cyan);
+}
+
+.card[data-cat='charge'] {
+  border-left-color: var(--amber);
+}
+.card[data-cat='charge'] .badge {
+  background: rgba(255, 209, 102, 0.16);
+  color: var(--amber);
+}
+.card[data-cat='collect'] {
+  border-left-color: var(--mint);
+}
+.card[data-cat='collect'] .badge {
+  background: rgba(126, 247, 200, 0.16);
+  color: var(--mint);
+}
+.card[data-cat='general'] {
+  border-left-color: #8ea2b5;
+}
+.card[data-cat='general'] .badge {
+  background: rgba(142, 162, 181, 0.16);
+  color: #b7c8d8;
+}
+.card[data-cat='evolution'] {
+  border-left-color: var(--pink);
+  background: linear-gradient(100deg, rgba(60, 12, 48, 0.94), rgba(10, 16, 30, 0.94));
+  box-shadow: 0 0 20px rgba(255, 94, 200, 0.18);
+}
+.card[data-cat='evolution'] .badge {
+  background: rgba(255, 94, 200, 0.2);
+  color: var(--pink);
+}
+
+.card.special::after {
+  content: '両方を極めた者に';
+  display: block;
+  margin-top: 5px;
+  font-size: 0.74em;
+  letter-spacing: 0.16em;
+  color: var(--pink);
+  opacity: 0.9;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(99, 217, 255, 0.12);
+  color: #eaf7ff;
+  padding: 10px 14px;
+  font: 700 1em/1.2 inherit;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.btn:active {
+  transform: scale(0.985);
+}
+
+.btn.primary {
+  background: linear-gradient(100deg, rgba(99, 217, 255, 0.28), rgba(255, 94, 200, 0.22));
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.row > .btn {
+  flex: 1;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  font-size: 0.9em;
+}
+
+.stats dt {
+  color: #7f97ac;
+}
+
+.stats dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.help {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(8, 14, 26, 0.6);
+  font-size: 0.84em;
+  color: #a9c0d4;
+}
+
+.help b {
+  color: #eaf7ff;
+}
+
+.seedrow input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(4, 9, 18, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #eaf7ff;
+  padding: 8px;
+  font: inherit;
+}
+
+/* ---------------------------------------------------------- CRT */
+#crt {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.16) 0 1px,
+    rgba(0, 0, 0, 0) 1px 3px
+  );
+  mix-blend-mode: multiply;
+}
+
+#crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+/* ---------------------------------------------------------- トースト */
+#toast {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: clamp(14px, 4.4vw, 20px);
+  color: #fff;
+  text-shadow: 0 0 12px rgba(99, 217, 255, 0.8);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  line-height: 1.4;
+  text-align: center;
+}
+
+#toast.show {
+  opacity: 1;
+}
