@@ -83,6 +83,11 @@ npm run build      # 本番ビルド
 
 `main` に push すると GitHub Actions が typecheck → test → build → GitHub Pages に公開する。
 
+初回だけリポジトリの **Settings → Pages → Build and deployment → Source** を
+**GitHub Actions** に変更しておく必要がある。
+（ワークフローの `GITHUB_TOKEN` では Pages サイトを新規作成できないため、
+`configure-pages` の `enablement` では代替できない）
+
 ### 決定論テスト（`npm test`）
 
 同じシード＋同じ入力列で 2 回走らせ、位置・スコア・敵数・乱数状態まで一致することを確認する。
