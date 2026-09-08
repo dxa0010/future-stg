@@ -442,19 +442,7 @@ export class GameRenderer {
     this.txtStage.text = w.stage.name;
     this.txtStage.position.set((VIEW_W - this.txtStage.width) / 2, 26);
 
-    // スタミナ（回避ストック）
-    const max = w.stats.staminaMax;
-    for (let i = 0; i < max; i++) {
-      const x = 12 + i * 15;
-      const y = VIEW_H - 16;
-      const filled = i < w.stamina;
-      g.circle(x, y, 5.5).fill({ color: filled ? 0xbff4ff : 0x1d2b3d, alpha: filled ? 1 : 0.85 });
-      if (!filled && i === w.stamina) {
-        const t = w.staminaTimer / w.stats.staminaRegen;
-        g.circle(x, y, 5.5 * t).fill({ color: 0x3f6a80, alpha: 0.9 });
-      }
-      g.circle(x, y, 6.5).stroke({ width: 1, color: 0x4d6b80, alpha: 0.8 });
-    }
+    // スタミナ（回避ストック）は回避ボタン側に出すので HUD には描かない
 
     // バフ表示
     const buffs: string[] = [];
@@ -462,7 +450,8 @@ export class GameRenderer {
     if (w.overdriveActive) buffs.push('OVERDRIVE ×3');
     if (w.stats.aegis > 0) buffs.push(`イージス ${w.stats.aegis}`);
     this.txtBuff.text = buffs.join('　');
-    this.txtBuff.position.set((VIEW_W - this.txtBuff.width) / 2, VIEW_H - 34);
+    // 左右の操作ボタンより上に置く（重ならないように）
+    this.txtBuff.position.set((VIEW_W - this.txtBuff.width) / 2, VIEW_H - 140);
 
     // ボス HP
     const boss = w.enemies.find((e) => e.alive && (e.kind === 'boss' || e.kind === 'midboss'));

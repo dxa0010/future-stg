@@ -8,10 +8,26 @@ import { GameRenderer } from './render/renderer';
 import { PointerInput } from './input/pointer';
 import { Sfx } from './audio/sfx';
 import { Ui, randomSeedText } from './ui/ui';
+import { screenKey } from './ui/screenKey';
 
 const STEP_MS = 1000 / TICK_RATE;
 /** 1 フレームで進めるロジックの最大ステップ数（重い端末での暴走を防ぐ）。 */
 const MAX_STEPS = 5;
+/** ステップ境界へのスナップ許容幅（ms）。 */
+const SNAP_TOLERANCE = 2.2;
+
+/**
+ * 表示リフレッシュとロジック 60Hz の周期ズレを吸収する。
+ * これを入れないと 1 フレームで 0 ステップ／2 ステップが交互に起きて、
+ * 移動が微妙にガクつく（＝ダイレクト感が無いと感じる主因）。
+ */
+function snapDelta(dtMs: number): number {
+  const n = Math.round(dtMs / STEP_MS);
+  if (n >= 1 && n <= MAX_STEPS && Math.abs(dtMs - n * STEP_MS) < SNAP_TOLERANCE) {
+    return n * STEP_MS;
+  }
+  return dtMs;
+}
 
 async function boot(): Promise<void> {
   const app = new Application();
@@ -58,6 +74,10 @@ async function boot(): Promise<void> {
       sfx.unlock();
       input.requestRelease();
     },
+    onDodge: () => {
+      sfx.unlock();
+      input.requestDodge();
+    },
     onNext: () => {
       const w = world;
       if (!w) return;
@@ -72,8 +92,14 @@ async function boot(): Promise<void> {
       paused = false;
       sfx.setCharge(false, 0);
       renderer.clearFx();
-      ui.hideRelease();
-      ui.showTitle(randomSeedText());
+      ui.hideButtons();
+      ui.showTitle(randomSeedText(), input.swipeDodge);
+    },
+    onPause: () => {
+      if (!world || world.state !== 'playing') return;
+      paused = true;
+      sfx.setCharge(false, 0);
+      ui.showPause(input.swipeDodge);
     },
     onResume: () => {
       paused = false;
@@ -90,11 +116,16 @@ async function boot(): Promise<void> {
       ui.setCrt(crtOn);
       return crtOn;
     },
+    onToggleSwipe: () => {
+      input.swipeDodge = !input.swipeDodge;
+      return input.swipeDodge;
+    },
   });
 
   function startRun(weapon: WeaponId, seedText: string): void {
     sfx.unlock();
-    const seed = /^\d+$/.test(seedText.trim()) ? Number(seedText.trim()) >>> 0 : hashSeed(seedText.trim() || 'seed');
+    const trimmed = seedText.trim();
+    const seed = /^\d+$/.test(trimmed) ? Number(trimmed) >>> 0 : hashSeed(trimmed || 'seed');
     world = new World(seed, weapon);
     replay = [];
     acc = 0;
@@ -106,33 +137,34 @@ async function boot(): Promise<void> {
     ui.toast(world.stage.name, 1400);
   }
 
-  /** ワールドの状態に合わせて画面を出し入れする。 */
   function syncScreen(): void {
     const w = world;
-    if (!w) return;
+    if (!w || paused) return;
+    const key = screenKey({
+      state: w.state,
+      level: w.level,
+      pendingLevels: w.pendingLevels,
+      stageId: w.stage.id,
+    });
+    if (key === ui.key) return;
+
     switch (w.state) {
       case 'levelup':
-        if (!ui.isOpen) ui.showLevelUp(w.choices, w.level);
+        ui.showLevelUp(key, w.choices, w.level);
         break;
       case 'stageclear':
-        if (!ui.isOpen) ui.showStageClear(w);
+        ui.showStageClear(key, w);
         break;
       case 'gameover':
-        if (!ui.isOpen) {
-          sfx.setCharge(false, 0);
-          ui.showGameOver(w);
-        }
+        sfx.setCharge(false, 0);
+        ui.showGameOver(w);
         break;
       case 'gameclear':
-        if (!ui.isOpen) {
-          sfx.setCharge(false, 0);
-          ui.showGameClear(w);
-        }
-        break;
-      case 'playing':
-        if (ui.isOpen && !paused) ui.hide();
+        sfx.setCharge(false, 0);
+        ui.showGameClear(w);
         break;
       default:
+        ui.hide();
         break;
     }
   }
@@ -179,7 +211,7 @@ async function boot(): Promise<void> {
 
   app.ticker.add((ticker) => {
     const w = world;
-    const dtMs = Math.min(100, ticker.deltaMS);
+    const dtMs = snapDelta(Math.min(100, ticker.deltaMS));
 
     if (w && !paused && !ui.isOpen) {
       acc += dtMs;
@@ -218,20 +250,21 @@ async function boot(): Promise<void> {
       sfx.setCharge(charging, Math.min(1, w.chargeFrames / CHARGE_MAX));
 
       ui.updateRelease(w);
+      ui.updateDodge(w, input.heading);
       renderer.draw(w, dtMs / STEP_MS);
     }
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && world && world.state === 'playing') {
+    if (document.hidden && world && world.state === 'playing' && !paused) {
       paused = true;
       sfx.setCharge(false, 0);
-      ui.showPause();
+      ui.showPause(input.swipeDodge);
     }
   });
 
   ui.setCrt(crtOn);
-  ui.showTitle(randomSeedText());
+  ui.showTitle(randomSeedText(), input.swipeDodge);
 
   // デバッグ・調整用。コンソールから中身を覗けるようにしておく。
   Object.defineProperty(window, 'game', {
@@ -244,6 +277,9 @@ async function boot(): Promise<void> {
       },
       get paused() {
         return paused;
+      },
+      get input() {
+        return input;
       },
     }),
   });

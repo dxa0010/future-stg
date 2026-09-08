@@ -24,8 +24,12 @@ export const PLAYER_RADIUS = 5;
 export const PLAYER_HIT_RADIUS = 3.2;
 export const PLAYER_START_X = VIEW_W / 2;
 export const PLAYER_START_Y = VIEW_H * 0.78;
-/** ドラッグ追従の倍率（指の移動量に対する自機の移動量）。 */
-export const PLAYER_DRAG_GAIN = 1.15;
+/**
+ * ドラッグ追従の倍率（指の移動量に対する自機の移動量）。
+ * 1.0 = 指の動きと自機の動きが 1:1。ここを上げるほど「滑る」感触になるので、
+ * ダイレクト感を優先して等倍にしている。移動速度の強化は stats.moveSpeed 側で乗る。
+ */
+export const PLAYER_DRAG_GAIN = 1.0;
 /** 被弾後の無敵。 */
 export const PLAYER_HIT_INVULN = f(1.2);
 /** 初期残機。プロトタイプは「触って評価できる」ことを優先して多めにしている。 */
@@ -44,8 +48,8 @@ export const STAMINA_MAX = 3;
 export const STAMINA_REGEN = f(4);
 /** ジャスト成立判定に使う自機の当たり半径（弾との重なり判定）。 */
 export const JUST_RADIUS_BASE = 11;
-/** フリック入力とみなす最小スワイプ距離（仮想座標）。 */
-export const FLICK_SWIPE_DIST = 22;
+/** スワイプを回避入力とみなす最小距離（仮想座標）。通常移動での暴発を避けて広めに取る。 */
+export const FLICK_SWIPE_DIST = 34;
 /** スワイプ判定に使う入力履歴の長さ（フレーム）。 */
 export const FLICK_SWIPE_WINDOW = f(0.12);
 
