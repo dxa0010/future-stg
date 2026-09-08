@@ -152,5 +152,50 @@ check('ヒットストップ 0.05s = 3F', HITSTOP_JUST === 3, `${HITSTOP_JUST}F`
   check('0.15秒未満の指離しでは溜めが増えない', w.chargeFrames === before);
 }
 
+// 画面遷移：ボス撃破の「レベルアップ → ステージクリア」でキーが変わること。
+// ここが同じキーだと Ui が描き直さず、選択後に操作不能で固まる（実際に出たバグ）。
+import { screenKey } from '../src/ui/screenKey';
+{
+  const levelup = screenKey({ state: 'levelup', level: 5, pendingLevels: 1, stageId: 1 });
+  const stageclear = screenKey({ state: 'stageclear', level: 5, pendingLevels: 0, stageId: 1 });
+  check('レベルアップ → ステージクリアでキーが変わる', levelup !== stageclear, `${levelup} -> ${stageclear}`);
+
+  const a = screenKey({ state: 'levelup', level: 5, pendingLevels: 2, stageId: 1 });
+  const b = screenKey({ state: 'levelup', level: 6, pendingLevels: 1, stageId: 1 });
+  check('連続レベルアップでキーが変わる', a !== b, `${a} -> ${b}`);
+
+  const playing = screenKey({ state: 'playing', level: 5, pendingLevels: 0, stageId: 1 });
+  check('プレイ中はオーバーレイ無し', playing === 'none');
+
+  const over = screenKey({ state: 'gameover', level: 5, pendingLevels: 0, stageId: 1 });
+  check('ゲームオーバーは専用キー', over === 'gameover' && over !== playing);
+}
+
+// ボス撃破後、3択を選ぶとステージクリアへ抜けられること（固まらないこと）
+{
+  const w = new World(4242, 'gatling');
+  const idle: InputFrame = { down: true, dx: 0, dy: 0, flick: -1, release: false };
+  // 中ボスまで飛ばして即撃破する
+  w.stageFrame = w.stage.bossAt - 1;
+  w.update(idle);
+  const boss = w.enemies.find((e) => e.kind === 'midboss');
+  check('中ボスが出現する', !!boss);
+  if (boss) {
+    boss.parts.forEach((p) => {
+      p.destroyed = true;
+    });
+    boss.coreOpen = true;
+    w.damageEnemy(boss, 99999, true, boss.x, boss.y);
+  }
+  check('撃破でレベルアップ（宝箱）が開く', w.state === 'levelup', w.state);
+  w.choose(0);
+  check('選択後にステージクリアへ抜ける', w.state === 'stageclear', w.state);
+  w.nextStage();
+  check('次ステージへ進める', w.state === 'playing' && w.stage.id === 2, `${w.state} stage=${w.stage.id}`);
+  const before = w.frame;
+  for (let i = 0; i < 30; i++) w.update(idle);
+  check('進行が再開する', w.frame > before, `${before} -> ${w.frame}`);
+}
+
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILED`);
 if (failed > 0) process.exit(1);

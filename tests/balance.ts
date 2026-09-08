@@ -5,10 +5,13 @@
  */
 import { World } from '../src/sim/world';
 import type { InputFrame, WeaponId } from '../src/sim/types';
-import { VIEW_W } from '../src/sim/constants';
+import { VIEW_W, PLAYER_DRAG_GAIN } from '../src/sim/constants';
 import { snap8 } from '../src/input/pointer';
 
 type BotKind = 'safe' | 'aggressive';
+
+/** ボットの移動速度（ワールド座標／フレーム）。人間の指より遅い前提の目安値。 */
+const BOT_SPEED = 5.75;
 
 interface Result {
   weapon: WeaponId;
@@ -127,10 +130,13 @@ function think(w: World, bot: BotKind, frame: number): InputFrame {
 
   tx = Math.max(20, Math.min(VIEW_W - 20, tx));
   ty = Math.max(340, Math.min(600, ty));
-  const mx = Math.max(-5, Math.min(5, tx - w.px));
-  const my = Math.max(-5, Math.min(5, ty - w.py));
-  inp.dx = mx;
-  inp.dy = my;
+  // ボットの速度は「ワールド座標で 1 フレームあたり BOT_SPEED」に固定する。
+  // 入力は指の移動量なので、ドラッグ倍率で割ってから渡す
+  // （PLAYER_DRAG_GAIN を変えてもボットの実効速度が変わらないようにするため）。
+  const mx = Math.max(-BOT_SPEED, Math.min(BOT_SPEED, tx - w.px));
+  const my = Math.max(-BOT_SPEED, Math.min(BOT_SPEED, ty - w.py));
+  inp.dx = mx / PLAYER_DRAG_GAIN;
+  inp.dy = my / PLAYER_DRAG_GAIN;
   return inp;
 }
 

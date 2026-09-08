@@ -104,6 +104,95 @@ body {
   }
 }
 
+/* ---------------------------------------------------------- 回避ボタン */
+#dodge-btn {
+  position: absolute;
+  left: 4%;
+  bottom: 6%;
+  width: 22%;
+  aspect-ratio: 1;
+  min-width: 62px;
+  border-radius: 50%;
+  border: 2px solid rgba(191, 244, 255, 0.75);
+  background: radial-gradient(circle at 50% 50%, rgba(10, 20, 34, 0.9), rgba(6, 12, 22, 0.75));
+  color: #eaf7ff;
+  font: 700 clamp(10px, 3vw, 13px) / 1 inherit;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.07s ease, opacity 0.12s ease;
+  box-shadow: 0 0 16px rgba(191, 244, 255, 0.22);
+}
+
+#dodge-btn .ring {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: conic-gradient(rgba(191, 244, 255, 0.85) calc(var(--t, 0) * 360deg), rgba(255, 255, 255, 0.06) 0);
+  mask: radial-gradient(circle, transparent 66%, #000 68%);
+  -webkit-mask: radial-gradient(circle, transparent 66%, #000 68%);
+}
+
+/* いま押したらどっちへ飛ぶかを示す矢印 */
+#dodge-btn .arrow {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.06s linear;
+}
+
+#dodge-btn .arrow::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 6%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 9px solid #bff4ff;
+}
+
+#dodge-btn .label {
+  position: relative;
+  letter-spacing: 0.04em;
+  font-size: 0.92em;
+  transform: translateY(-6%);
+}
+
+#dodge-btn .stock {
+  position: absolute;
+  bottom: 17%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+#dodge-btn .stock i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+#dodge-btn .stock i.on {
+  background: #bff4ff;
+  box-shadow: 0 0 5px rgba(191, 244, 255, 0.9);
+}
+
+#dodge-btn[data-ready='0'] {
+  opacity: 0.42;
+  filter: saturate(0.35);
+}
+
+#dodge-btn:active {
+  transform: scale(0.92);
+}
+
 /* ---------------------------------------------------------- ポーズ */
 #pause-btn {
   position: absolute;
