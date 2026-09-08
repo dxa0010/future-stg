@@ -107,11 +107,16 @@ export class Sfx {
     this.noise(0.05, 0.08, 5200);
   }
 
-  /** ジャスト回避：鋭い金属音。 */
-  just(): void {
-    this.tone('triangle', 2400, 0.09, 0.3, 1500);
-    this.tone('square', 3600, 0.05, 0.12, 2600, 0.005);
+  /** ジャスト回避：鋭い金属音。連続で決めるほど高く鳴る。 */
+  just(combo = 1): void {
+    const step = Math.min(5, combo - 1);
+    const k = Math.pow(1.12, step);
+    this.tone('triangle', 2400 * k, 0.09, 0.3, 1500 * k);
+    this.tone('square', 3600 * k, 0.05, 0.12, 2600 * k, 0.005);
     this.noise(0.12, 0.18, 6000);
+    // 決めた直後に短い上昇音を重ねる（ここが「うれしみ」の芯）
+    this.tone('sine', 880 * k, 0.1, 0.14, 1760 * k, 0.04);
+    if (step >= 2) this.tone('sine', 1320 * k, 0.12, 0.1, 2640 * k, 0.1);
   }
 
   explode(size: number): void {

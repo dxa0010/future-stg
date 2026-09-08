@@ -155,7 +155,7 @@ export interface Pickup {
 
 /** 描画側に渡す一時的な演出イベント（シミュは状態を持たない）。 */
 export type FxEvent =
-  | { type: 'just'; x: number; y: number }
+  | { type: 'just'; x: number; y: number; combo: number }
   | { type: 'deflect'; x: number; y: number }
   | { type: 'dash'; x1: number; y1: number; x2: number; y2: number; dir: number }
   | { type: 'explode'; x: number; y: number; size: number }

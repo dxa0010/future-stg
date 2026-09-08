@@ -270,5 +270,59 @@ import { DODGE_DEFLECT_R } from '../src/sim/constants';
   }
 }
 
+// ジャスト回避の見返り：スロー演出と連続数。
+// 瞬炎そのものは仕様どおり重ねがけしない（連続数はスコアと演出だけに効く）。
+import { JUST_SLOWMO, SHUNEN_ATK_MUL, SHUNEN_DURATION } from '../src/sim/constants';
+{
+  const hold: InputFrame = { down: true, dx: 0, dy: 0, flick: -1, release: false };
+  const dodgeRight: InputFrame = { down: true, dx: 0, dy: 0, flick: 2, release: false };
+  const putBullet = (w: World, ox: number) => {
+    w.eBullets.push({
+      alive: true, kind: 'bullet', x: w.px + ox, y: w.py, vx: 0, vy: 0,
+      r: 4, life: 600, len: 0, angle: 0, warn: 0, deflect: 0, style: 1,
+    });
+  };
+
+  const w = new World(31, 'gatling');
+  w.enemies.length = 0;
+  putBullet(w, 20);
+  w.update(dodgeRight);
+  check('ジャストでスローが入る', w.slowmo === JUST_SLOWMO, `${w.slowmo}F`);
+  check('スロー中は時間の進みが遅い', w.timeScale < 1, `${w.timeScale}`);
+  check('連続数が 1 になる', w.justCombo === 1, `${w.justCombo}`);
+  const atk1 = w.stats.atk;
+
+  // 瞬炎が切れる前にもう一度決める → 連続数だけ伸びる
+  for (let i = 0; i < FLICK_DURATION + 2; i++) {
+    w.update(hold);
+    w.drainFx();
+  }
+  w.eBullets.length = 0;
+  putBullet(w, 20);
+  w.update(dodgeRight);
+  check('連続で決めると連続数が伸びる', w.justCombo === 2, `${w.justCombo}`);
+  check('瞬炎は重ねがけされない（仕様）', w.stats.atk === atk1 && SHUNEN_ATK_MUL === 1.6);
+
+  // 瞬炎が切れると連続数はリセット
+  for (let i = 0; i < SHUNEN_DURATION + 5; i++) {
+    w.update(hold);
+    w.drainFx();
+  }
+  check('瞬炎が切れると連続数はリセットされる', w.justCombo === 0 && w.shunen === 0, `${w.justCombo}`);
+
+  // スローはロジックのフレームで数えるので、決定論は保たれたまま
+  const run = () => {
+    const x = new World(31, 'gatling');
+    x.enemies.length = 0;
+    putBullet(x, 20);
+    for (let i = 0; i < 120; i++) {
+      x.update(i === 0 ? dodgeRight : hold);
+      x.drainFx();
+    }
+    return `${x.frame}/${x.px.toFixed(3)}/${x.slowmo}/${x.rng.getState()}`;
+  };
+  check('スローを挟んでも決定論は保たれる', run() === run(), run());
+}
+
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILED`);
 if (failed > 0) process.exit(1);
