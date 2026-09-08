@@ -197,5 +197,78 @@ import { screenKey } from '../src/ui/screenKey';
   check('進行が再開する', w.frame > before, `${before} -> ${w.frame}`);
 }
 
+// 回避の弾き：無敵区間ではジャストが成立し、経路の弾は弾かれること。
+// 無敵中に経路を掃きすぎるとジャスト回避が成立しなくなるので、両立を確認する。
+import { DODGE_DEFLECT_R } from '../src/sim/constants';
+{
+  const hold: InputFrame = { down: true, dx: 0, dy: 0, flick: -1, release: false };
+  const dodgeRight: InputFrame = { down: true, dx: 0, dy: 0, flick: 2, release: false };
+
+  /** 自機から (ox, oy) の位置に静止した弾を置く。回避は右方向に 90 進む。 */
+  const putBullet = (w: World, ox: number, oy: number) => {
+    w.eBullets.push({
+      alive: true, kind: 'bullet', x: w.px + ox, y: w.py + oy, vx: 0, vy: 0,
+      r: 4, life: 600, len: 0, angle: 0, warn: 0, deflect: 0, style: 1,
+    });
+    return w.eBullets[w.eBullets.length - 1];
+  };
+
+  const runDodge = (w: World) => {
+    for (let i = 0; i < FLICK_DURATION + 2; i++) {
+      w.update(i === 0 ? dodgeRight : hold);
+      w.drainFx();
+    }
+  };
+
+  // (a) 経路の芯にある弾はジャストの対象。成立して消える
+  {
+    const w = new World(7, 'gatling');
+    w.enemies.length = 0;
+    const b = putBullet(w, 20, 0);
+    runDodge(w);
+    check('経路の芯の弾でジャストが成立する', w.mastery.justSuccess === 1, `just=${w.mastery.justSuccess}`);
+    check('ジャストした弾は消える', !b.alive);
+  }
+
+  // (b) 無敵が切れた後に通る（＝着地点まわりの）弾は「弾かれる」
+  {
+    const w = new World(7, 'gatling');
+    w.enemies.length = 0;
+    const b = putBullet(w, 88, 18);
+    runDodge(w);
+    check('着地点まわりの弾は弾かれる', b.alive && w.deflects >= 1, `alive=${b.alive} deflects=${w.deflects}`);
+    check('弾いた弾は消えていない（消すのはジャストだけ）', b.alive);
+    check('弾かれた弾は一時的に無害になる', b.deflect > 0, `${b.deflect}F`);
+    check(
+      '弾かれた弾は自機から離れる向きに飛ぶ',
+      b.vx * (b.x - w.px) + b.vy * (b.y - w.py) > 0,
+      `v=(${b.vx.toFixed(1)},${b.vy.toFixed(1)})`,
+    );
+  }
+
+  // (c) 通路の外は弾かれない（回避が万能にならないこと）
+  {
+    const w = new World(7, 'gatling');
+    w.enemies.length = 0;
+    const b = putBullet(w, 88, DODGE_DEFLECT_R + 32);
+    runDodge(w);
+    check('通路の外の弾は弾かれない', b.deflect === 0 && w.deflects === 0, `deflects=${w.deflects}`);
+  }
+
+  // (d) 弾かれた弾は時間が経つと再び危険になる
+  {
+    const w = new World(7, 'gatling');
+    w.enemies.length = 0;
+    const b = putBullet(w, 88, 18);
+    runDodge(w);
+    const start = b.deflect;
+    for (let i = 0; i < start + 2; i++) {
+      w.update(hold);
+      w.drainFx();
+    }
+    check('弾かれた弾はやがて危険に戻る', start > 0 && b.deflect === 0, `${start}F -> ${b.deflect}F`);
+  }
+}
+
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILED`);
 if (failed > 0) process.exit(1);

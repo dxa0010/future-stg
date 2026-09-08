@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Text, type Texture } from 'pixi.js';
 import type { World } from '../sim/world';
 import type { Enemy, FxEvent } from '../sim/types';
-import { VIEW_W, VIEW_H, CHARGE_STAGES, CHARGE_MAX, FLICK_IFRAMES } from '../sim/constants';
+import { VIEW_W, VIEW_H, CHARGE_STAGES, CHARGE_MAX, FLICK_IFRAMES, DODGE_DEFLECT_R } from '../sim/constants';
 import { buildTextures, type TextureSet } from './textures';
 import { ParticlePool, SpritePool } from './pool';
 import { FxLayer } from './fx';
@@ -195,6 +195,20 @@ export class GameRenderer {
       const k = 1 + Math.sin(w.frame * 0.12) * 0.12;
       s.scale.set(k);
     }
+    // 回避中の残像。通った道が見えると「切り開いた」感じが出る
+    if (w.flickActive) {
+      for (let i = 1; i <= 3; i++) {
+        const t = i / 4;
+        const g = this.miscPool.add(this.tex.afterimage);
+        g.x = w.px + (w.flickSx - w.px) * t;
+        g.y = w.py + (w.flickSy - w.py) * t;
+        g.scale.set(0.85 - t * 0.15);
+        g.alpha = (1 - t) * 0.55;
+        g.tint = 0x9fe8ff;
+        g.blendMode = 'add';
+      }
+    }
+
     // ヴォルテックスストームの残像
     for (const a of w.afterimages) {
       const s = this.miscPool.add(this.tex.afterimage);
@@ -299,12 +313,14 @@ export class GameRenderer {
     this.eGlowPool.begin();
     for (const b of w.eBullets) {
       if (!b.alive || b.kind !== 'bullet') continue;
-      const tint = b.style === 2 ? 0xff5ec8 : b.style === 1 ? 0xff5a5a : 0xffa83d;
-      const k = b.r / 8;
+      // 弾かれている間は無害なので、色を抜いて「今は危なくない」と分かるようにする
+      const knocked = b.deflect > 0;
+      const tint = knocked ? 0x9fd8ff : b.style === 2 ? 0xff5ec8 : b.style === 1 ? 0xff5a5a : 0xffa83d;
+      const k = (b.r / 8) * (knocked ? 0.8 : 1);
       // 外側に加算のグロー、内側は不透明なコア。暗い背景でも弾道が読める。
-      this.eGlowPool.add(b.x, b.y, (b.r * 3.4) / 64, (b.r * 3.4) / 64, 0, tint, 0.42);
-      this.eBulletPool.add(b.x, b.y, k * 1.05, k * 1.05, 0, tint, 1);
-      this.eBulletPool.add(b.x, b.y, k * 0.5, k * 0.5, 0, 0xffffff, 1);
+      this.eGlowPool.add(b.x, b.y, (b.r * 3.4) / 64, (b.r * 3.4) / 64, 0, tint, knocked ? 0.22 : 0.42);
+      this.eBulletPool.add(b.x, b.y, k * 1.05, k * 1.05, 0, tint, knocked ? 0.5 : 1);
+      this.eBulletPool.add(b.x, b.y, k * 0.5, k * 0.5, 0, 0xffffff, knocked ? 0.7 : 1);
     }
     this.eBulletPool.end();
     this.eGlowPool.end();
@@ -357,13 +373,20 @@ export class GameRenderer {
       }
     }
 
-    // 回避の無敵可視化
+    // 回避の可視化。無敵中は太い光、無敵が切れた後は「弾き飛ばす通路」を見せる
     if (w.flickActive) {
       const inv = w.flickT <= FLICK_IFRAMES;
       g.moveTo(w.flickSx, w.flickSy)
         .lineTo(w.px, w.py)
-        .stroke({ width: inv ? 10 : 4, color: inv ? 0xbff4ff : 0x4a6a80, alpha: inv ? 0.5 : 0.25 });
-      if (inv) g.circle(w.px, w.py, w.stats.justRadius).stroke({ width: 1.5, color: 0xbff4ff, alpha: 0.75 });
+        .stroke({ width: inv ? 12 : DODGE_DEFLECT_R * 2, color: inv ? 0xbff4ff : 0x63d9ff, alpha: inv ? 0.5 : 0.14 });
+      g.moveTo(w.flickSx, w.flickSy)
+        .lineTo(w.px, w.py)
+        .stroke({ width: inv ? 4 : 3, color: 0xffffff, alpha: inv ? 0.85 : 0.4 });
+      if (inv) {
+        g.circle(w.px, w.py, w.stats.justRadius).stroke({ width: 1.5, color: 0xbff4ff, alpha: 0.75 });
+      } else {
+        g.circle(w.px, w.py, DODGE_DEFLECT_R).stroke({ width: 1.5, color: 0x63d9ff, alpha: 0.5 });
+      }
     }
 
     // 瞬炎

@@ -95,6 +95,18 @@ export class Sfx {
     this.tone('square', 760, 0.045, 0.045, 420);
   }
 
+  /** 回避の踏み込み。短いホワイトノイズのスイープ。 */
+  dash(): void {
+    this.noise(0.16, 0.16, 3200);
+    this.tone('triangle', 520, 0.12, 0.08, 1100);
+  }
+
+  /** 敵弾を弾いたときの硬い音。 */
+  deflect(): void {
+    this.tone('square', 1500, 0.05, 0.09, 900);
+    this.noise(0.05, 0.08, 5200);
+  }
+
   /** ジャスト回避：鋭い金属音。 */
   just(): void {
     this.tone('triangle', 2400, 0.09, 0.3, 1500);

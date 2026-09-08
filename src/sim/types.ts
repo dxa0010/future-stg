@@ -70,6 +70,8 @@ export interface EnemyBullet {
   angle: number;
   /** 出現直後の予告時間（この間は当たらない）。 */
   warn: number;
+  /** 回避に弾かれてから無害でいる残りフレーム。 */
+  deflect: number;
   style: number;
 }
 
@@ -154,6 +156,8 @@ export interface Pickup {
 /** 描画側に渡す一時的な演出イベント（シミュは状態を持たない）。 */
 export type FxEvent =
   | { type: 'just'; x: number; y: number }
+  | { type: 'deflect'; x: number; y: number }
+  | { type: 'dash'; x1: number; y1: number; x2: number; y2: number; dir: number }
   | { type: 'explode'; x: number; y: number; size: number }
   | { type: 'hit'; x: number; y: number }
   | { type: 'resonance'; x: number; y: number; stage: number }
