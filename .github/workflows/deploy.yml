@@ -33,11 +33,9 @@ jobs:
         run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+      # 事前に Settings → Pages で Source = GitHub Actions にしておく必要がある。
+      # （ワークフローの GITHUB_TOKEN では Pages サイトを新規作成できない）
       - uses: actions/configure-pages@v5
-        with:
-          # リポジトリで Pages が未設定でも、この実行で
-          # Source = GitHub Actions として有効化する
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
