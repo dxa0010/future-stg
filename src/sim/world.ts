@@ -33,11 +33,34 @@ import {
   DODGE_DEFLECT_R,
   DODGE_DEFLECT_FRAMES,
   DODGE_DEFLECT_SPEED,
+  REFLECT_ABSORB_R,
+  REFLECT_STOCK_MAX,
+  REFLECT_MIN_TO_FIRE,
+  REFLECT_WINDOW,
+  REFLECT_BULLET_DMG,
+  REFLECT_BULLET_SPEED,
+  REFLECT_BULLET_HOMING,
+  REFLECT_LASER_FRAMES,
+  REFLECT_LASER_HALFW,
+  REFLECT_LASER_DPF_PER_STOCK,
+  REFLECT_LASER_MIN_RAYS,
+  REFLECT_LASER_MAX_RAYS,
+  REFLECT_LASER_SPREAD,
   GEM_PICK_R,
   expToNext,
 } from './constants';
 import { DIR8 } from './types';
-import type { InputFrame, PlayerBullet, EnemyBullet, Enemy, Gem, Pickup, FxEvent, GameState } from './types';
+import type {
+  InputFrame,
+  PlayerBullet,
+  EnemyBullet,
+  PlayerLaser,
+  Enemy,
+  Gem,
+  Pickup,
+  FxEvent,
+  GameState,
+} from './types';
 import type { PlayerStats } from './stats';
 import { createStats, hasEvolution } from './stats';
 import type { Choice, Mastery } from './upgrades';
@@ -119,6 +142,10 @@ export class World {
   resonance: Resonance | null = null;
   /** ディメンション・リフレクターの吸収ストック。 */
   reflectStock = 0;
+  /** ジャスト成立から反射が続く残りフレーム。 */
+  reflectWindow = 0;
+  /** 解放レーザー。 */
+  pLasers: PlayerLaser[] = [];
   /** この溜めでオーバードライブが乗っているか。 */
   overdriveActive = false;
 
@@ -218,6 +245,7 @@ export class World {
     this.updatePlayer(input);
     this.updateWeapons(input);
     this.updateResonance();
+    this.updatePlayerLasers();
     this.updatePlayerBullets();
     this.updateEnemies();
     this.updateEnemyBullets();
@@ -227,6 +255,7 @@ export class World {
     this.updateSpawner();
 
     compact(this.pBullets);
+    compact(this.pLasers);
     compact(this.eBullets);
     compact(this.enemies);
     compact(this.gems);
@@ -243,6 +272,7 @@ export class World {
       if (this.shunen === 0) this.justCombo = 0;
     }
     if (this.releaseLock > 0) this.releaseLock--;
+    if (this.reflectWindow > 0) this.reflectWindow--;
     if (this.sinceJust < 9999) this.sinceJust++;
 
     // --- スタミナ自動回復
@@ -342,6 +372,7 @@ export class World {
    */
   private sweepDodge(x0: number, y0: number, x1: number, y1: number): void {
     const [ddx, ddy] = DIR8[this.flickDir];
+    const reflector = hasEvolution(this.stats, 'reflector');
     for (const b of this.eBullets) {
       if (!b.alive || b.kind !== 'bullet') continue;
       if (b.warn > 0 || b.deflect > 0) continue;
@@ -349,6 +380,15 @@ export class World {
       const c = closestOnSegment(b.x, b.y, x0, y0, x1, y1);
       const gap = Math.hypot(b.x - c.x, b.y - c.y);
       if (gap > DODGE_DEFLECT_R + b.r) continue;
+
+      // 究極進化：ただ弾くのではなく、そのまま敵へホーミングする弾に変える
+      if (reflector) {
+        b.alive = false;
+        this.spawnReflectBullet(b.x, b.y);
+        this.deflects++;
+        this.score += 10;
+        continue;
+      }
 
       // 軌跡の外側へ押し出す。真上に重なっているときは回避方向の横へ逃がす
       let nx = b.x - c.x;
@@ -409,13 +449,17 @@ export class World {
     if (after > before) this.fx.push({ type: 'chargeStage', stage: after });
   }
 
-  /** 被弾・解放で溜めを失う。 */
+  /**
+   * 溜めを失う。
+   * 吸収ストックはここでは消さない。臨界共鳴を撃つたびに吸収した弾まで消えると、
+   * 溜め特化の進化なのに溜めを使うと究極進化が死ぬ、という噛み合わせになるため。
+   * ストックを失うのは被弾したときだけ（onPlayerHit で明示的に消す）。
+   */
   private clearCharge(): void {
     this.chargeFrames = 0;
     this.chargePending = 0;
     this.chargeCommitted = false;
     this.overdriveActive = false;
-    this.reflectStock = 0;
   }
 
   // ======================================================================
@@ -484,14 +528,104 @@ export class World {
     if (this.frame % 6 === 0) this.fx.push({ type: 'hit', x: this.px, y: this.py - 40 });
   }
 
+  /**
+   * 反転弾を 1 発生む。敵弾だったものが、そのまま敵へ強く曲がって飛んでいく。
+   * 究極進化の「攻守一体」の芯。回避するたびに攻撃になる。
+   */
+  private spawnReflectBullet(x: number, y: number): void {
+    const t = this.nearestEnemyAbove(x, y);
+    // 撃ち返す先が無いときは、とりあえず上へ飛ばして敵が来るのを待つ
+    const a = t ? Math.atan2(t.y - y, t.x - x) : -Math.PI / 2;
+    this.spawnPlayerBullet(
+      x,
+      y,
+      Math.cos(a) * REFLECT_BULLET_SPEED,
+      Math.sin(a) * REFLECT_BULLET_SPEED,
+      4,
+      REFLECT_BULLET_DMG * this.atk,
+      1,
+      'reflect',
+      REFLECT_BULLET_HOMING,
+    );
+    this.fx.push({ type: 'reflect', x, y });
+  }
+
+  /**
+   * 吸収したストックを数方向のレーザーに変えて解放する。
+   * 上方向を中心に扇状。ストックが増えるほど本数も威力も伸び、
+   * 溜まりきると全周へ開く。
+   */
   private emitReflect(): void {
-    const n = Math.min(24, this.reflectStock);
-    const dmg = 2.6 * this.atk;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + this.frame * 0.01;
-      this.spawnPlayerBullet(this.px, this.py, Math.cos(a) * 9, Math.sin(a) * 9, 4, dmg, 3, 'reflect');
+    const stock = this.reflectStock;
+    if (stock < REFLECT_MIN_TO_FIRE) return;
+
+    const t = stock / REFLECT_STOCK_MAX;
+    // 必ず奇数。中央の 1 本が真上を向くようにする
+    const rays = Math.max(
+      REFLECT_LASER_MIN_RAYS,
+      Math.min(REFLECT_LASER_MAX_RAYS, REFLECT_LASER_MIN_RAYS + 2 * Math.floor(stock / 7)),
+    );
+    const dpf = REFLECT_LASER_DPF_PER_STOCK * stock * this.atk;
+    const half = (rays - 1) / 2;
+
+    for (let i = 0; i < rays; i++) {
+      // 中央を真上（-π/2）に置き、左右へ等間隔に開く
+      const a = -Math.PI / 2 + (i - half) * REFLECT_LASER_SPREAD;
+      this.pLasers.push({
+        alive: true,
+        x: this.px,
+        y: this.py,
+        angle: a,
+        len: 900,
+        halfW: REFLECT_LASER_HALFW * (0.75 + t * 0.5),
+        dpf,
+        t: REFLECT_LASER_FRAMES,
+        maxT: REFLECT_LASER_FRAMES,
+      });
     }
+
+    this.fx.push({ type: 'reflectFire', x: this.px, y: this.py, rays, stock });
+    this.hitstop = Math.max(this.hitstop, 2);
     this.reflectStock = 0;
+  }
+
+  /** 解放レーザーの当たり判定と寿命。 */
+  private updatePlayerLasers(): void {
+    for (const l of this.pLasers) {
+      if (!l.alive) continue;
+      if (--l.t <= 0) {
+        l.alive = false;
+        continue;
+      }
+      for (const e of this.enemies) {
+        if (!e.alive) continue;
+        const d = distToSegment(e.x, e.y, l.x, l.y, l.angle, l.len);
+        if (d > l.halfW + e.r) continue;
+        this.damageEnemy(e, l.dpf, true, e.x, e.y);
+      }
+      // レーザーに触れた敵弾も消し飛ばす
+      for (const b of this.eBullets) {
+        if (!b.alive || b.kind !== 'bullet') continue;
+        if (distToSegment(b.x, b.y, l.x, l.y, l.angle, l.len) <= l.halfW + b.r) b.alive = false;
+      }
+    }
+  }
+
+  /** 自機より上にいる最も近い敵。撃ち返す先を選ぶのに使う。 */
+  private nearestEnemyAbove(x: number, y: number): Enemy | null {
+    let best: Enemy | null = null;
+    let bd = Infinity;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      // 真横〜上を優先。下にいる敵しかいないなら、それでも狙う
+      const bias = e.y > y ? 60000 : 0;
+      const d = (e.x - x) ** 2 + (e.y - y) ** 2 + bias;
+      if (d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
   }
 
   private spawnPlayerBullet(
@@ -831,9 +965,10 @@ export class World {
       const d2 = dx * dx + dy * dy;
 
       // ディメンション・リフレクター：静止（溜め）中は敵弾を吸収してストック
-      if (reflector && this.chargeCommitted && d2 <= 46 * 46) {
+      if (reflector && this.chargeCommitted && d2 <= REFLECT_ABSORB_R * REFLECT_ABSORB_R) {
         b.alive = false;
-        this.reflectStock = Math.min(40, this.reflectStock + 1);
+        this.reflectStock = Math.min(REFLECT_STOCK_MAX, this.reflectStock + 1);
+        this.fx.push({ type: 'reflect', x: b.x, y: b.y });
         continue;
       }
 
@@ -847,6 +982,12 @@ export class World {
       const hr = b.r + PLAYER_HIT_RADIUS;
       if (d2 <= hr * hr) {
         b.alive = false;
+        // ジャスト成立から続く窓の間は、被弾せずに撃ち返す
+        if (reflector && this.reflectWindow > 0) {
+          this.spawnReflectBullet(b.x, b.y);
+          this.score += 20;
+          continue;
+        }
         this.onPlayerHit();
       }
     }
@@ -890,6 +1031,9 @@ export class World {
       this.clearBullets(this.flickSx + (this.px - this.flickSx) * t, this.flickSy + (this.py - this.flickSy) * t, 26);
     }
 
+    // ディメンション・リフレクター：ここから一定時間、当たった弾を撃ち返す
+    if (hasEvolution(this.stats, 'reflector')) this.reflectWindow = REFLECT_WINDOW;
+
     // ヴォルテックスストーム：360 度誘導針弾 + 残像
     if (hasEvolution(this.stats, 'vortex')) {
       const n = 16;
@@ -929,8 +1073,11 @@ export class World {
     this.invuln = PLAYER_HIT_INVULN;
     this.shunen = 0;
     this.justCombo = 0;
-    // 保持中の溜めも含めて全消滅：これがこの仕様のリスクの本体
+    // 保持中の溜めも含めて全消滅：これがこの仕様のリスクの本体。
+    // 吸収したストックも一緒に失う
     this.clearCharge();
+    this.reflectStock = 0;
+    this.reflectWindow = 0;
     this.fx.push({ type: 'damaged', x: this.px, y: this.py });
     this.clearBullets(this.px, this.py, 76);
 
@@ -1133,6 +1280,9 @@ export class World {
     this.gems.length = 0;
     this.pickups.length = 0;
     this.resonance = null;
+    this.pLasers.length = 0;
+    this.reflectStock = 0;
+    this.reflectWindow = 0;
     this.invuln = 90;
     // イージスは次ステージ開始で回復する
     this.stats.aegis = this.stats.aegisMax;

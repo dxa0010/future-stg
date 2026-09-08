@@ -72,6 +72,19 @@ export class FxLayer {
         this.shake = Math.max(this.shake, 2);
         break;
       }
+      case 'reflect':
+        this.add('glow', ev.x, ev.y, 22, 5, 0xff9ef0, 10);
+        this.add('ring', ev.x, ev.y, 4, 26, 0xff5ec8, 10);
+        break;
+      case 'reflectFire': {
+        // 何方向かへ伸びるレーザーの発射。ストック量で派手さが変わる
+        const k = 0.6 + (ev.stock / 30) * 0.8;
+        this.whiteFlash = Math.max(this.whiteFlash, 0.3 * k);
+        this.add('ring', ev.x, ev.y, 16, 190 * k, 0xff9ef0, 20);
+        this.add('glow', ev.x, ev.y, 110 * k, 20, 0xff5ec8, 16);
+        this.shake = Math.max(this.shake, 5 + ev.rays);
+        break;
+      }
       case 'deflect':
         this.add('glow', ev.x, ev.y, 34, 6, 0xffffff, 12);
         this.add('ring', ev.x, ev.y, 6, 44, 0xbff4ff, 14);
