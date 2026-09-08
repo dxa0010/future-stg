@@ -50,6 +50,16 @@ export const STAMINA_REGEN = f(4);
 export const JUST_RADIUS_BASE = 11;
 /** スワイプを回避入力とみなす最小距離（仮想座標）。通常移動での暴発を避けて広めに取る。 */
 export const FLICK_SWIPE_DIST = 34;
+
+/**
+ * 回避中に敵弾を弾き飛ばす通路の半径。
+ * ここを広げるほど「回避＝安全地帯」に寄って、飛び込むリスクが薄くなる。
+ */
+export const DODGE_DEFLECT_R = 18;
+/** 弾かれた弾が無害でいるフレーム数（この間に自機から離れる）。 */
+export const DODGE_DEFLECT_FRAMES = f(0.4);
+/** 弾かれた弾の最低速度。 */
+export const DODGE_DEFLECT_SPEED = 3.6;
 /** スワイプ判定に使う入力履歴の長さ（フレーム）。 */
 export const FLICK_SWIPE_WINDOW = f(0.12);
 

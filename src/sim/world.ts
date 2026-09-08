@@ -27,6 +27,9 @@ import {
   SHUNEN_RATE_MUL,
   HITSTOP_JUST,
   HITSTOP_RESONANCE,
+  DODGE_DEFLECT_R,
+  DODGE_DEFLECT_FRAMES,
+  DODGE_DEFLECT_SPEED,
   GEM_PICK_R,
   expToNext,
 } from './constants';
@@ -97,6 +100,8 @@ export class World {
   justDone = false;
   /** ジャスト成功からの経過フレーム（オーバードライブ判定用）。 */
   sinceJust = 9999;
+  /** 回避で弾いた敵弾の累計（結果表示用）。 */
+  deflects = 0;
   shunen = 0;
 
   // 溜め
@@ -241,12 +246,21 @@ export class World {
 
     // --- 移動
     if (this.flickActive) {
+      const fromX = this.px;
+      const fromY = this.py;
       this.flickT++;
       const u = Math.min(1, this.flickT / FLICK_DURATION);
       // easeOutCubic：出だしが速く、終わりで止まる
       const e = 1 - Math.pow(1 - u, 3);
       this.px = this.flickSx + (this.flickTx - this.flickSx) * e;
       this.py = this.flickSy + (this.flickTy - this.flickSy) * e;
+      // 無敵が切れてからは、通る経路の敵弾を弾き飛ばして着地点を切り開く。
+      // 無敵区間は元々当たらないので弾く必要がなく、むしろそこで掃くと
+      // 「無敵中に弾と重なる」＝ジャスト回避が成立しなくなる。
+      // ジャスト成立後は、その先の経路も掃く。
+      if (!this.invincible || this.justDone) {
+        this.sweepDodge(fromX, fromY, this.px, this.py);
+      }
       if (this.flickT >= FLICK_DURATION) this.flickActive = false;
     } else if (input.down) {
       this.px += input.dx * PLAYER_DRAG_GAIN * this.stats.moveSpeed;
@@ -289,9 +303,55 @@ export class World {
     this.flickTx = Math.max(PLAYER_RADIUS, Math.min(VIEW_W - PLAYER_RADIUS, this.px + dx * d));
     this.flickTy = Math.max(PLAYER_RADIUS + 20, Math.min(VIEW_H - PLAYER_RADIUS, this.py + dy * d));
 
+    this.fx.push({
+      type: 'dash',
+      x1: this.flickSx,
+      y1: this.flickSy,
+      x2: this.flickTx,
+      y2: this.flickTy,
+      dir,
+    });
+
     // ディメンション・リフレクター：吸収した弾を全方向レーザーに変換
     if (hasEvolution(this.stats, 'reflector') && this.reflectStock > 0) {
       this.emitReflect();
+    }
+  }
+
+  /**
+   * 回避で通過した経路上の敵弾を弾き飛ばす。
+   * 消すのではなく弾くだけなので、弾はしばらくすると再び危険になる
+   * （ジャスト成立時だけは onJust 側で軌跡上の弾をまとめて消す）。
+   */
+  private sweepDodge(x0: number, y0: number, x1: number, y1: number): void {
+    const [ddx, ddy] = DIR8[this.flickDir];
+    for (const b of this.eBullets) {
+      if (!b.alive || b.kind !== 'bullet') continue;
+      if (b.warn > 0 || b.deflect > 0) continue;
+
+      const c = closestOnSegment(b.x, b.y, x0, y0, x1, y1);
+      const gap = Math.hypot(b.x - c.x, b.y - c.y);
+      if (gap > DODGE_DEFLECT_R + b.r) continue;
+
+      // 軌跡の外側へ押し出す。真上に重なっているときは回避方向の横へ逃がす
+      let nx = b.x - c.x;
+      let ny = b.y - c.y;
+      const d = Math.hypot(nx, ny);
+      if (d < 0.001) {
+        nx = -ddy;
+        ny = ddx;
+      } else {
+        nx /= d;
+        ny /= d;
+      }
+      const sp = Math.max(DODGE_DEFLECT_SPEED, Math.hypot(b.vx, b.vy) * 1.25);
+      b.vx = (nx * 0.8 + ddx * 0.4) * sp;
+      b.vy = (ny * 0.8 + ddy * 0.4) * sp;
+      b.deflect = DODGE_DEFLECT_FRAMES;
+      b.life = Math.min(b.life, 240);
+      this.deflects++;
+      this.score += 5;
+      this.fx.push({ type: 'deflect', x: b.x, y: b.y });
     }
   }
 
@@ -539,6 +599,7 @@ export class World {
         b.warn--;
         continue;
       }
+      if (b.deflect > 0) b.deflect--;
       if (b.kind === 'laser') {
         if (--b.life <= 0) b.alive = false;
         continue;
@@ -591,12 +652,27 @@ export class World {
       len: 900,
       angle,
       warn,
+      deflect: 0,
       style: 0,
     });
   }
 
   private pushEnemyBullet(x: number, y: number, vx: number, vy: number, r: number, style: number): void {
-    this.eBullets.push({ alive: true, kind: 'bullet', x, y, vx, vy, r, life: 480, len: 0, angle: 0, warn: 0, style });
+    this.eBullets.push({
+      alive: true,
+      kind: 'bullet',
+      x,
+      y,
+      vx,
+      vy,
+      r,
+      life: 480,
+      len: 0,
+      angle: 0,
+      warn: 0,
+      deflect: 0,
+      style,
+    });
   }
 
   // ======================================================================
@@ -720,6 +796,8 @@ export class World {
 
     for (const b of this.eBullets) {
       if (!b.alive || b.warn > 0) continue;
+      // 弾かれた直後の弾は自機を素通りする（弾いた先で当たっては意味がない）
+      if (b.deflect > 0) continue;
 
       if (b.kind === 'laser') {
         const d = distToSegment(this.px, this.py, b.x, b.y, b.angle, b.len);
@@ -1044,6 +1122,25 @@ export class World {
 
 function clampX(x: number): number {
   return Math.max(18, Math.min(VIEW_W - 18, x));
+}
+
+/** 線分 (sx,sy)-(ex,ey) 上で点 (px,py) に最も近い点。 */
+function closestOnSegment(
+  px: number,
+  py: number,
+  sx: number,
+  sy: number,
+  ex: number,
+  ey: number,
+): { x: number; y: number } {
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-6) return { x: sx, y: sy };
+  let t = ((px - sx) * dx + (py - sy) * dy) / len2;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  return { x: sx + dx * t, y: sy + dy * t };
 }
 
 /** 点と半直線レーザーの距離。 */

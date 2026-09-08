@@ -60,6 +60,7 @@ async function boot(): Promise<void> {
   let replay: InputFrame[] = [];
   let lastShots = 0;
   let lastShotSoundAt = 0;
+  let lastDeflectSoundAt = 0;
 
   const ui = new Ui({
     onStart: (weapon, seedText) => startRun(weapon, seedText),
@@ -179,6 +180,18 @@ async function boot(): Promise<void> {
           sfx.just();
           ui.toast('JUST', 480);
           break;
+        case 'dash':
+          sfx.dash();
+          break;
+        case 'deflect': {
+          // 一度に何発も弾くので、音は間引く
+          const now = performance.now();
+          if (now - lastDeflectSoundAt > 45) {
+            sfx.deflect();
+            lastDeflectSoundAt = now;
+          }
+          break;
+        }
         case 'explode':
           if (ev.size > 20) sfx.explode(ev.size);
           else if (ev.size > 11) sfx.explode(ev.size * 0.5);
