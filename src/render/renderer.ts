@@ -1,7 +1,18 @@
 import { Application, Container, Graphics, Text, type Texture } from 'pixi.js';
 import type { World } from '../sim/world';
 import type { Enemy, FxEvent } from '../sim/types';
-import { VIEW_W, VIEW_H, CHARGE_STAGES, CHARGE_MAX, FLICK_IFRAMES, DODGE_DEFLECT_R } from '../sim/constants';
+import {
+  VIEW_W,
+  VIEW_H,
+  CHARGE_STAGES,
+  CHARGE_MAX,
+  FLICK_IFRAMES,
+  DODGE_DEFLECT_R,
+  STICK_MAX_R,
+  STICK_DEADZONE,
+  SHUNEN_DURATION,
+} from '../sim/constants';
+import type { StickView } from '../input/pointer';
 import { buildTextures, type TextureSet } from './textures';
 import { ParticlePool, SpritePool } from './pool';
 import { FxLayer } from './fx';
@@ -38,6 +49,7 @@ export class GameRenderer {
   private readonly fx: FxLayer;
   private readonly hud = new Container();
   private readonly hudGfx = new Graphics();
+  private readonly stickGfx = new Graphics();
   private readonly txtScore: Text;
   private readonly txtStage: Text;
   private readonly txtLives: Text;
@@ -45,6 +57,9 @@ export class GameRenderer {
   private readonly shipPool = new SpritePool();
 
   private scale = 1;
+  /** キャンバスの表示位置。クライアント座標 → 仮想座標の変換に使う。 */
+  private originX = 0;
+  private originY = 0;
 
   constructor(private readonly app: Application) {
     this.tex = buildTextures(app.renderer);
@@ -85,6 +100,7 @@ export class GameRenderer {
       this.shipPool.container,
       this.playerGfx,
       this.fx.pool.container,
+      this.stickGfx,
       this.overlayGfx,
       this.hud,
     );
@@ -125,6 +141,42 @@ export class GameRenderer {
     const canvas = this.app.canvas as HTMLCanvasElement;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
+    this.updateOrigin();
+  }
+
+  /** キャンバスの画面上の位置を取り直す（レイアウト確定後に呼ぶ）。 */
+  updateOrigin(): void {
+    const rect = (this.app.canvas as HTMLCanvasElement).getBoundingClientRect();
+    this.originX = rect.left;
+    this.originY = rect.top;
+  }
+
+  /** クライアント座標 → 仮想座標。 */
+  toVirtual(clientX: number, clientY: number): { x: number; y: number } {
+    return { x: (clientX - this.originX) / this.scale, y: (clientY - this.originY) / this.scale };
+  }
+
+  /** 仮想スティックを描く。 */
+  drawStick(stick: StickView): void {
+    const g = this.stickGfx;
+    g.clear();
+    if (!stick.active) return;
+
+    const { ox, oy, kx, ky } = stick;
+    // 台座
+    g.circle(ox, oy, STICK_MAX_R).fill({ color: 0x0a1524, alpha: 0.3 });
+    g.circle(ox, oy, STICK_MAX_R).stroke({ width: 1.5, color: 0x8ce4ff, alpha: 0.35 });
+    g.circle(ox, oy, STICK_DEADZONE).stroke({ width: 1, color: 0x8ce4ff, alpha: 0.25 });
+    // 倒している向きの線
+    if (stick.norm > 0) {
+      g.moveTo(ox, oy)
+        .lineTo(ox + kx, oy + ky)
+        .stroke({ width: 2, color: 0x8ce4ff, alpha: 0.45 });
+    }
+    // つまみ
+    g.circle(ox + kx, oy + ky, 16).fill({ color: 0x63d9ff, alpha: 0.28 });
+    g.circle(ox + kx, oy + ky, 16).stroke({ width: 2, color: 0xbff4ff, alpha: 0.85 });
+    g.circle(ox + kx, oy + ky, 4).fill({ color: 0xffffff, alpha: 0.9 });
   }
 
   /** 画面座標 → 仮想座標の変換に使う倍率。 */
@@ -298,8 +350,16 @@ export class GameRenderer {
       if (!b.alive) continue;
       const rot = Math.atan2(b.vy, b.vx) + Math.PI / 2;
       const long = b.style === 'needle' || b.style === 'reflect' ? 2.8 : 1.9;
-      const tint = b.style === 'reflect' ? 0xff9ef0 : b.style === 'needle' ? 0x9fffdd : 0x8ce4ff;
-      const k = b.r / 8;
+      // 瞬炎中は弾そのものを熱い色にする。強化されたことが弾を見れば分かる
+      const hot = w.shunen > 0 && b.style === 'gatling';
+      const tint = hot
+        ? 0xffb347
+        : b.style === 'reflect'
+          ? 0xff9ef0
+          : b.style === 'needle'
+            ? 0x9fffdd
+            : 0x8ce4ff;
+      const k = (b.r / 8) * (hot ? 1.25 : 1);
       this.pGlowPool.add(b.x, b.y, (b.r * 2.6) / 64, (b.r * 2.6) / 64, 0, tint, 0.5);
       this.pBulletPool.add(b.x, b.y, k * 0.9, k * long, rot, tint, 0.95);
       this.pBulletPool.add(b.x, b.y, k * 0.45, k * (long * 0.7), rot, 0xffffff, 1);
@@ -389,13 +449,29 @@ export class GameRenderer {
       }
     }
 
-    // 瞬炎
+    // 瞬炎。残り時間がリングの長さで分かるようにして「今は強い」を見せる
     if (w.shunen > 0) {
-      g.circle(w.px, w.py, 15 + Math.sin(w.frame * 0.4) * 2).stroke({
-        width: 2,
-        color: 0xffb347,
-        alpha: 0.8,
-      });
+      const t = w.shunen / SHUNEN_DURATION;
+      const r = 17 + Math.sin(w.frame * 0.35) * 2;
+      g.circle(w.px, w.py, r).stroke({ width: 2, color: 0xffb347, alpha: 0.35 });
+      const seg = 26;
+      for (let i = 0; i < seg; i++) {
+        if (i / seg > t) break;
+        const a0 = -Math.PI / 2 + (i / seg) * Math.PI * 2;
+        const a1 = -Math.PI / 2 + ((i + 0.7) / seg) * Math.PI * 2;
+        g.moveTo(w.px + Math.cos(a0) * r, w.py + Math.sin(a0) * r)
+          .lineTo(w.px + Math.cos(a1) * r, w.py + Math.sin(a1) * r)
+          .stroke({ width: 3, color: 0xffd166, alpha: 0.95 });
+      }
+      // 揺らめく炎
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + w.frame * 0.09;
+        const rr = r + 4 + Math.sin(w.frame * 0.3 + i) * 3;
+        g.circle(w.px + Math.cos(a) * rr, w.py + Math.sin(a) * rr, 2.4).fill({
+          color: 0xffb347,
+          alpha: 0.85,
+        });
+      }
     }
 
     // ディメンション・リフレクターの吸収ストック
@@ -411,6 +487,7 @@ export class GameRenderer {
     s.y = w.py;
     s.scale.set(0.85);
     if (w.invuln > 0) s.alpha = w.frame % 6 < 3 ? 0.35 : 0.85;
+    if (w.shunen > 0) s.tint = 0xffd9a0;
     if (w.invincible) s.tint = 0xbff4ff;
     this.shipPool.end();
 
@@ -469,12 +546,14 @@ export class GameRenderer {
 
     // バフ表示
     const buffs: string[] = [];
-    if (w.shunen > 0) buffs.push(`瞬炎 ${(w.shunen / 60).toFixed(1)}s`);
+    if (w.shunen > 0) {
+      buffs.push(w.justCombo > 1 ? `瞬炎 ×${w.justCombo}連` : '瞬炎');
+    }
     if (w.overdriveActive) buffs.push('OVERDRIVE ×3');
     if (w.stats.aegis > 0) buffs.push(`イージス ${w.stats.aegis}`);
     this.txtBuff.text = buffs.join('　');
-    // 左右の操作ボタンより上に置く（重ならないように）
-    this.txtBuff.position.set((VIEW_W - this.txtBuff.width) / 2, VIEW_H - 140);
+    // 自機の定位置（画面下寄り）や操作ボタンと重ならないよう上に置く
+    this.txtBuff.position.set((VIEW_W - this.txtBuff.width) / 2, 62);
 
     // ボス HP
     const boss = w.enemies.find((e) => e.alive && (e.kind === 'boss' || e.kind === 'midboss'));

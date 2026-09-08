@@ -17,6 +17,8 @@ export interface UiCallbacks {
   onToggleSound: () => boolean;
   onToggleCrt: () => boolean;
   onToggleSwipe: () => boolean;
+  /** 操作方式を切り替えて、切り替え後が仮想スティックなら true。 */
+  onToggleMove: () => boolean;
 }
 
 const CAT_LABEL: Record<string, string> = {
@@ -106,7 +108,7 @@ export class Ui {
   }
 
   // ------------------------------------------------------------- タイトル
-  showTitle(defaultSeed: string, swipeDodge: boolean): void {
+  showTitle(defaultSeed: string, swipeDodge: boolean, stickMode: boolean): void {
     this.open(
       'title',
       `
@@ -114,7 +116,7 @@ export class Ui {
       <p class="sub">縦スクロール・ローグライトSTG／プロトタイプ v1</p>
 
       <div class="help">
-        <b>ドラッグ</b>：移動＋自動射撃<br />
+        <b>スティック</b>：触った場所に出る。倒した向きへ移動＋自動射撃<br />
         <b>回避ボタン（左下）</b>：進んでいる向きにころりん。無敵中に敵弾と重なると<b>ジャスト</b>成立 → 瞬炎<br />
         <b>指を離す</b>：完全静止して溜め。<b>溜めは繰り越せる</b>が、被弾すると全消滅<br />
         <b>解放ボタン（右下）</b>：臨界共鳴（極太ビーム＋弾消し衝撃波＋ジェム吸着）<br />
@@ -138,9 +140,12 @@ export class Ui {
         <button class="btn" id="reroll">🎲</button>
       </div>
       <div class="row">
+        <button class="btn" id="movebtn">操作 ${stickMode ? 'スティック' : 'ドラッグ'}</button>
+        <button class="btn" id="swipebtn">スワイプ回避 ${swipeDodge ? 'ON' : 'OFF'}</button>
+      </div>
+      <div class="row">
         <button class="btn" id="snd">音 ON</button>
         <button class="btn" id="crtbtn">CRT OFF</button>
-        <button class="btn" id="swipebtn">スワイプ回避 ${swipeDodge ? 'ON' : 'OFF'}</button>
       </div>
       <p class="sub">同じシード＋同じ入力なら必ず同じ展開になる決定論シミュレーション。</p>
     `,
@@ -156,6 +161,7 @@ export class Ui {
     this.bindToggle('snd', () => (this.cb.onToggleSound() ? '音 OFF' : '音 ON'));
     this.bindToggle('crtbtn', () => (this.cb.onToggleCrt() ? 'CRT ON' : 'CRT OFF'));
     this.bindToggle('swipebtn', () => `スワイプ回避 ${this.cb.onToggleSwipe() ? 'ON' : 'OFF'}`);
+    this.bindToggle('movebtn', () => `操作 ${this.cb.onToggleMove() ? 'スティック' : 'ドラッグ'}`);
   }
 
   private bindToggle(id: string, fn: () => string): void {
@@ -232,7 +238,7 @@ export class Ui {
     this.on('retry', () => this.cb.onRetry());
   }
 
-  showPause(swipeDodge: boolean): void {
+  showPause(swipeDodge: boolean, stickMode: boolean): void {
     this.open(
       'pause',
       `
@@ -241,6 +247,7 @@ export class Ui {
         <button class="btn" id="snd">音</button>
         <button class="btn" id="crtbtn">CRT</button>
       </div>
+      <button class="btn" id="movebtn">操作 ${stickMode ? 'スティック' : 'ドラッグ'}</button>
       <button class="btn" id="swipebtn">スワイプ回避 ${swipeDodge ? 'ON' : 'OFF'}</button>
       <button class="btn primary" id="resume">再開</button>
       <button class="btn" id="quit">タイトルへ</button>
@@ -251,6 +258,7 @@ export class Ui {
     this.bindToggle('snd', () => (this.cb.onToggleSound() ? '音 OFF' : '音 ON'));
     this.bindToggle('crtbtn', () => (this.cb.onToggleCrt() ? 'CRT ON' : 'CRT OFF'));
     this.bindToggle('swipebtn', () => `スワイプ回避 ${this.cb.onToggleSwipe() ? 'ON' : 'OFF'}`);
+    this.bindToggle('movebtn', () => `操作 ${this.cb.onToggleMove() ? 'スティック' : 'ドラッグ'}`);
   }
 
   private statsHtml(w: World): string {
@@ -273,6 +281,7 @@ export class Ui {
         <b>検証データ</b><br />
         ジャスト回避：${m.justSuccess} / ${m.justAttempt}（成功率 ${rate}%）<br />
         段階3 解放：${m.maxStageRelease} 回<br />
+        弾き飛ばし：${w.deflects} 発<br />
         シード：${w.seed}
       </div>`;
   }

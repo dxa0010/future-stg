@@ -462,3 +462,9 @@ body {
 #toast.show {
   opacity: 1;
 }
+
+#toast .combo {
+  color: #ffd166;
+  font-size: 1.35em;
+  text-shadow: 0 0 14px rgba(255, 209, 102, 0.9);
+}

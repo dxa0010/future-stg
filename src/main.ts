@@ -15,6 +15,8 @@ const STEP_MS = 1000 / TICK_RATE;
 const MAX_STEPS = 5;
 /** ステップ境界へのスナップ許容幅（ms）。 */
 const SNAP_TOLERANCE = 2.2;
+/** スティック非表示用。 */
+const IDLE_STICK = { active: false, ox: 0, oy: 0, kx: 0, ky: 0, norm: 0 };
 
 /**
  * 表示リフレッシュとロジック 60Hz の周期ズレを吸収する。
@@ -49,7 +51,10 @@ async function boot(): Promise<void> {
   window.addEventListener('orientationchange', () => window.setTimeout(() => renderer.resize(), 120));
 
   const sfx = new Sfx();
-  const input = new PointerInput(() => renderer.viewScale);
+  const input = new PointerInput(
+    () => renderer.viewScale,
+    (cx, cy) => renderer.toVirtual(cx, cy),
+  );
   input.attach(app.canvas as HTMLCanvasElement);
 
   let world: World | null = null;
@@ -94,13 +99,13 @@ async function boot(): Promise<void> {
       sfx.setCharge(false, 0);
       renderer.clearFx();
       ui.hideButtons();
-      ui.showTitle(randomSeedText(), input.swipeDodge);
+      ui.showTitle(randomSeedText(), input.swipeDodge, input.mode === 'stick');
     },
     onPause: () => {
       if (!world || world.state !== 'playing') return;
       paused = true;
       sfx.setCharge(false, 0);
-      ui.showPause(input.swipeDodge);
+      ui.showPause(input.swipeDodge, input.mode === 'stick');
     },
     onResume: () => {
       paused = false;
@@ -120,6 +125,11 @@ async function boot(): Promise<void> {
     onToggleSwipe: () => {
       input.swipeDodge = !input.swipeDodge;
       return input.swipeDodge;
+    },
+    onToggleMove: () => {
+      input.mode = input.mode === 'stick' ? 'drag' : 'stick';
+      input.reset();
+      return input.mode === 'stick';
     },
   });
 
@@ -177,8 +187,13 @@ async function boot(): Promise<void> {
     for (const ev of events) {
       switch (ev.type) {
         case 'just':
-          sfx.just();
-          ui.toast('JUST', 480);
+          sfx.just(ev.combo);
+          ui.toast(
+            ev.combo > 1
+              ? `JUST <span class="combo">&times;${ev.combo}</span>`
+              : 'JUST',
+            ev.combo > 1 ? 760 : 520,
+          );
           break;
         case 'dash':
           sfx.dash();
@@ -227,7 +242,9 @@ async function boot(): Promise<void> {
     const dtMs = snapDelta(Math.min(100, ticker.deltaMS));
 
     if (w && !paused && !ui.isOpen) {
-      acc += dtMs;
+      // ジャスト直後のスロー。実時間の進み方だけを落とすので、
+      // ロジックのステップ列は変わらず決定論は保たれる
+      acc += dtMs * w.timeScale;
       let steps = 0;
       while (acc >= STEP_MS && steps < MAX_STEPS) {
         const frame = w.state === 'playing' ? input.sample() : EMPTY_INPUT;
@@ -264,6 +281,7 @@ async function boot(): Promise<void> {
 
       ui.updateRelease(w);
       ui.updateDodge(w, input.heading);
+      renderer.drawStick(w.state === 'playing' && !ui.isOpen ? input.stick : IDLE_STICK);
       renderer.draw(w, dtMs / STEP_MS);
     }
   });
@@ -272,12 +290,12 @@ async function boot(): Promise<void> {
     if (document.hidden && world && world.state === 'playing' && !paused) {
       paused = true;
       sfx.setCharge(false, 0);
-      ui.showPause(input.swipeDodge);
+      ui.showPause(input.swipeDodge, input.mode === 'stick');
     }
   });
 
   ui.setCrt(crtOn);
-  ui.showTitle(randomSeedText(), input.swipeDodge);
+  ui.showTitle(randomSeedText(), input.swipeDodge, input.mode === 'stick');
 
   // デバッグ・調整用。コンソールから中身を覗けるようにしておく。
   Object.defineProperty(window, 'game', {

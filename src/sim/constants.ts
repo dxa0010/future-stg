@@ -48,6 +48,14 @@ export const STAMINA_MAX = 3;
 export const STAMINA_REGEN = f(4);
 /** ジャスト成立判定に使う自機の当たり半径（弾との重なり判定）。 */
 export const JUST_RADIUS_BASE = 11;
+// ---------------------------------------------------------------- 仮想スティック
+/** スティックを倒しきる距離（仮想座標）。 */
+export const STICK_MAX_R = 44;
+/** 反応しない中心の遊び（仮想座標）。 */
+export const STICK_DEADZONE = 5;
+/** 倒しきったときの移動速度（仮想座標／フレーム）。stats.moveSpeed が乗る。 */
+export const STICK_SPEED = 5.4;
+
 /** スワイプを回避入力とみなす最小距離（仮想座標）。通常移動での暴発を避けて広めに取る。 */
 export const FLICK_SWIPE_DIST = 34;
 
@@ -96,6 +104,16 @@ export const RESONANCE_CLEARS_BULLETS: readonly boolean[] = [false, true, true];
 // ---------------------------------------------------------------- 演出
 /** ジャスト回避のヒットストップ：0.05 秒 = 3F */
 export const HITSTOP_JUST = f(0.05);
+/**
+ * ジャスト成立後のスローモーション。
+ * ヒットストップだけだと「止まって終わり」なので、直後に一拍スローを入れて
+ * 「切り抜けた」を見せる。ロジックのフレーム数で数えるので決定論は保たれる。
+ */
+export const JUST_SLOWMO = f(0.22);
+/** スロー中の時間の進み方。 */
+export const JUST_SLOWMO_SCALE = 0.38;
+/** 瞬炎が切れるとジャストの連続数はリセットされる。 */
+export const JUST_COMBO_MAX = 9;
 export const HITSTOP_RESONANCE = f(0.08);
 
 // ---------------------------------------------------------------- ジェム / レベル

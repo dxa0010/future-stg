@@ -38,11 +38,25 @@ export class FxLayer {
 
   push(ev: FxEvent): void {
     switch (ev.type) {
-      case 'just':
-        this.add('ring', ev.x, ev.y, 10, 78, 0xbff4ff, 22);
-        this.add('glow', ev.x, ev.y, 60, 10, 0xffffff, 14);
-        this.shake = Math.max(this.shake, 3);
+      case 'just': {
+        // 連続数に応じて派手さを上げる（効果は上がらないが、上手さは見えるようにする）
+        const k = 1 + Math.min(4, ev.combo - 1) * 0.22;
+        this.whiteFlash = Math.max(this.whiteFlash, 0.34 + Math.min(4, ev.combo - 1) * 0.06);
+        this.add('ring', ev.x, ev.y, 10, 110 * k, 0xbff4ff, 24);
+        this.add('ring', ev.x, ev.y, 6, 62 * k, 0xffffff, 15);
+        this.add('glow', ev.x, ev.y, 90 * k, 14, 0xffffff, 16);
+        // 放射状の火花。切り抜けた感じを出す
+        const spokes = 8 + Math.min(4, ev.combo - 1) * 2;
+        for (let i = 0; i < spokes; i++) {
+          const a = (i / spokes) * Math.PI * 2 + ev.combo * 0.3;
+          const len = 46 * k;
+          const mx = ev.x + Math.cos(a) * len * 0.5;
+          const my = ev.y + Math.sin(a) * len * 0.5;
+          this.addStreak('streakCore', mx, my, a, len, 7, 1, 0xbff4ff, 13);
+        }
+        this.shake = Math.max(this.shake, 4 + Math.min(4, ev.combo - 1));
         break;
+      }
       case 'dash': {
         // 通った道を一本の光跡で見せる。halo と芯を重ねて太く光らせる
         const dx = ev.x2 - ev.x1;

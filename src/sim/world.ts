@@ -26,6 +26,9 @@ import {
   SHUNEN_ATK_MUL,
   SHUNEN_RATE_MUL,
   HITSTOP_JUST,
+  JUST_SLOWMO,
+  JUST_SLOWMO_SCALE,
+  JUST_COMBO_MAX,
   HITSTOP_RESONANCE,
   DODGE_DEFLECT_R,
   DODGE_DEFLECT_FRAMES,
@@ -78,6 +81,8 @@ export class World {
   state: GameState = 'playing';
   /** ヒットストップ残りフレーム。0 より大きい間はロジックが止まる。 */
   hitstop = 0;
+  /** スローモーション残りフレーム。描画側が時間の進み方を落とす。 */
+  slowmo = 0;
 
   // --------------------------------------------------------- 自機
   px = PLAYER_START_X;
@@ -100,6 +105,8 @@ export class World {
   justDone = false;
   /** ジャスト成功からの経過フレーム（オーバードライブ判定用）。 */
   sinceJust = 9999;
+  /** 瞬炎が続いている間のジャスト連続数。 */
+  justCombo = 0;
   /** 回避で弾いた敵弾の累計（結果表示用）。 */
   deflects = 0;
   shunen = 0;
@@ -181,6 +188,11 @@ export class World {
     return this.chargeFrames > 0 && this.state === 'playing';
   }
 
+  /** 実時間の進み方の倍率。スロー演出に使う。 */
+  get timeScale(): number {
+    return this.slowmo > 0 ? JUST_SLOWMO_SCALE : 1;
+  }
+
   drainFx(): FxEvent[] {
     const out = this.fx;
     this.fx = [];
@@ -196,6 +208,8 @@ export class World {
       return;
     }
     if (this.state !== 'playing') return;
+
+    if (this.slowmo > 0) this.slowmo--;
 
     this.frame++;
     this.stageFrame++;
@@ -224,7 +238,10 @@ export class World {
   // ======================================================================
   private updatePlayer(input: InputFrame): void {
     if (this.invuln > 0) this.invuln--;
-    if (this.shunen > 0) this.shunen--;
+    if (this.shunen > 0) {
+      this.shunen--;
+      if (this.shunen === 0) this.justCombo = 0;
+    }
     if (this.releaseLock > 0) this.releaseLock--;
     if (this.sinceJust < 9999) this.sinceJust++;
 
@@ -857,11 +874,14 @@ export class World {
     this.mastery.justSuccess++;
     this.sinceJust = 0;
     this.hitstop = HITSTOP_JUST;
+    this.slowmo = JUST_SLOWMO;
     this.shunen = SHUNEN_DURATION;
     this.stamina = Math.min(this.stats.staminaMax, this.stamina + 1);
     this.staminaTimer = 0;
-    this.score += 300;
-    this.fx.push({ type: 'just', x: this.px, y: this.py });
+    // 瞬炎の効果は重ねない（仕様）。伸びるのは連続数とスコアだけ
+    this.justCombo = Math.min(JUST_COMBO_MAX, this.justCombo + 1);
+    this.score += 300 * this.justCombo;
+    this.fx.push({ type: 'just', x: this.px, y: this.py, combo: this.justCombo });
 
     // 通過軌跡上の弾を消す
     const steps = 6;
@@ -908,6 +928,7 @@ export class World {
     this.lives--;
     this.invuln = PLAYER_HIT_INVULN;
     this.shunen = 0;
+    this.justCombo = 0;
     // 保持中の溜めも含めて全消滅：これがこの仕様のリスクの本体
     this.clearCharge();
     this.fx.push({ type: 'damaged', x: this.px, y: this.py });

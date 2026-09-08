@@ -1,11 +1,27 @@
 import type { InputFrame } from '../sim/types';
-import { FLICK_SWIPE_DIST } from '../sim/constants';
+import { FLICK_SWIPE_DIST, STICK_MAX_R, STICK_DEADZONE, STICK_SPEED } from '../sim/constants';
 
 interface Sample {
   x: number;
   y: number;
   t: number;
 }
+
+/** 描画に渡すスティックの状態（すべて仮想座標）。 */
+export interface StickView {
+  active: boolean;
+  /** 支点。 */
+  ox: number;
+  oy: number;
+  /** 支点からのつまみのずれ。 */
+  kx: number;
+  ky: number;
+  /** 倒し具合 0-1。 */
+  norm: number;
+}
+
+/** 操作方式。 */
+export type MoveMode = 'stick' | 'drag';
 
 /**
  * ドラッグ／回避／解放を 1 フレーム分の InputFrame に変換する層。
@@ -48,7 +64,63 @@ export class PointerInput {
   /** 進行方向の追従の速さ（0-1、大きいほど機敏）。 */
   private static readonly HEADING_SMOOTH = 0.35;
 
-  constructor(private readonly getScale: () => number) {}
+  /** 操作方式。既定は仮想スティック。 */
+  mode: MoveMode = 'stick';
+
+  // --- 仮想スティックの状態（仮想座標）
+  private stickActive = false;
+  private stickOx = 0;
+  private stickOy = 0;
+  private stickKx = 0;
+  private stickKy = 0;
+
+  constructor(
+    private readonly getScale: () => number,
+    private readonly toVirtual: (clientX: number, clientY: number) => { x: number; y: number },
+  ) {}
+
+  /** 描画用のスティック状態。 */
+  get stick(): StickView {
+    const d = Math.hypot(this.stickKx, this.stickKy);
+    return {
+      active: this.stickActive && this.mode === 'stick',
+      ox: this.stickOx,
+      oy: this.stickOy,
+      kx: this.stickKx,
+      ky: this.stickKy,
+      norm: Math.min(1, d / STICK_MAX_R),
+    };
+  }
+
+  /**
+   * スティックの倒し具合を単位ベクトル×強さで返す。倒していなければ null。
+   * 遊びの外側から線形に効かせる（素直で読みやすい方が狙って動かせる）。
+   */
+  private stickVector(): { x: number; y: number } | null {
+    if (!this.stickActive) return null;
+    const d = Math.hypot(this.stickKx, this.stickKy);
+    if (d <= STICK_DEADZONE) return null;
+    const strength = Math.min(1, (d - STICK_DEADZONE) / (STICK_MAX_R - STICK_DEADZONE));
+    return { x: (this.stickKx / d) * strength, y: (this.stickKy / d) * strength };
+  }
+
+  /** スティックのつまみを動かし、倒しきったら支点を引きずる。 */
+  private moveStick(clientX: number, clientY: number): void {
+    const v = this.toVirtual(clientX, clientY);
+    let kx = v.x - this.stickOx;
+    let ky = v.y - this.stickOy;
+    const d = Math.hypot(kx, ky);
+    if (d > STICK_MAX_R) {
+      // 支点を指へ寄せる。こうしないと大きく振ったときに反応が頭打ちで固まって感じる
+      const over = d - STICK_MAX_R;
+      this.stickOx += (kx / d) * over;
+      this.stickOy += (ky / d) * over;
+      kx = (kx / d) * STICK_MAX_R;
+      ky = (ky / d) * STICK_MAX_R;
+    }
+    this.stickKx = kx;
+    this.stickKy = ky;
+  }
 
   attach(el: HTMLElement): void {
     el.style.touchAction = 'none';
@@ -62,6 +134,13 @@ export class PointerInput {
       this.lastY = e.clientY;
       this.samples.length = 0;
       this.samples.push({ x: e.clientX, y: e.clientY, t: e.timeStamp });
+      // 触った場所にスティックが出る（フローティング方式）
+      const v = this.toVirtual(e.clientX, e.clientY);
+      this.stickActive = true;
+      this.stickOx = v.x;
+      this.stickOy = v.y;
+      this.stickKx = 0;
+      this.stickKy = 0;
       e.preventDefault();
     });
 
@@ -80,6 +159,7 @@ export class PointerInput {
         this.updateHeading(mx, my);
         this.pushSample(p.clientX, p.clientY, p.timeStamp);
       }
+      this.moveStick(e.clientX, e.clientY);
       e.preventDefault();
     });
 
@@ -87,6 +167,9 @@ export class PointerInput {
       if (e.pointerId !== this.pointerId) return;
       this.pointerId = -1;
       this.down = false;
+      this.stickActive = false;
+      this.stickKx = 0;
+      this.stickKy = 0;
       this.samples.length = 0;
     };
     el.addEventListener('pointerup', end);
@@ -102,6 +185,7 @@ export class PointerInput {
       this.keys.clear();
       this.down = false;
       this.pointerId = -1;
+      this.stickActive = false;
     });
   }
 
@@ -198,6 +282,9 @@ export class PointerInput {
     this.accDy = 0;
     this.hx = 0;
     this.hy = 0;
+    this.stickActive = false;
+    this.stickKx = 0;
+    this.stickKy = 0;
     this.pendingFlick = -1;
     this.pendingRelease = false;
     this.samples.length = 0;
@@ -205,10 +292,25 @@ export class PointerInput {
 
   /** 1 ティック分の入力を取り出す（呼ぶたびに累積がリセットされる）。 */
   sample(): InputFrame {
-    let dx = this.accDx;
-    let dy = this.accDy;
-    this.accDx = 0;
-    this.accDy = 0;
+    let dx = 0;
+    let dy = 0;
+
+    if (this.mode === 'stick') {
+      // スティックは「倒した向きへ一定速度」。指の移動量は使わない
+      const v = this.stickVector();
+      if (v) {
+        dx = v.x * STICK_SPEED;
+        dy = v.y * STICK_SPEED;
+        this.headingDir = snap8(v.x, v.y);
+      }
+      this.accDx = 0;
+      this.accDy = 0;
+    } else {
+      dx = this.accDx;
+      dy = this.accDy;
+      this.accDx = 0;
+      this.accDy = 0;
+    }
 
     let down = this.down;
     const kdir = this.keyDir();
