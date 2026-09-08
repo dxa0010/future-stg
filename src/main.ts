@@ -198,6 +198,18 @@ async function boot(): Promise<void> {
         case 'dash':
           sfx.dash();
           break;
+        case 'reflect': {
+          const now = performance.now();
+          if (now - lastDeflectSoundAt > 45) {
+            sfx.reflect();
+            lastDeflectSoundAt = now;
+          }
+          break;
+        }
+        case 'reflectFire':
+          sfx.reflectFire(ev.rays);
+          ui.toast(`REFLECT <span class="combo">${ev.stock}</span>`, 900);
+          break;
         case 'deflect': {
           // 一度に何発も弾くので、音は間引く
           const now = performance.now();

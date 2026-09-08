@@ -132,6 +132,21 @@ export interface Enemy {
   baseX: number;
 }
 
+/** 究極進化の解放レーザー。自機から放射状に伸びる線分。 */
+export interface PlayerLaser {
+  alive: boolean;
+  x: number;
+  y: number;
+  angle: number;
+  len: number;
+  halfW: number;
+  /** 毎フレームのダメージ。 */
+  dpf: number;
+  /** 残りフレーム。 */
+  t: number;
+  maxT: number;
+}
+
 export interface Gem {
   alive: boolean;
   x: number;
@@ -157,6 +172,8 @@ export interface Pickup {
 export type FxEvent =
   | { type: 'just'; x: number; y: number; combo: number }
   | { type: 'deflect'; x: number; y: number }
+  | { type: 'reflect'; x: number; y: number }
+  | { type: 'reflectFire'; x: number; y: number; rays: number; stock: number }
   | { type: 'dash'; x1: number; y1: number; x2: number; y2: number; dir: number }
   | { type: 'explode'; x: number; y: number; size: number }
   | { type: 'hit'; x: number; y: number }

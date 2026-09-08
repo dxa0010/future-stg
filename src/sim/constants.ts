@@ -126,6 +126,44 @@ export const GEM_PICK_R = 12;
  */
 export const expToNext = (level: number): number => Math.round(6 + level * 1.2);
 
+// ---------------------------------------------------------------- 究極進化
+// ディメンション・リフレクター。回避・溜めの両方を極めた者だけが取れる特殊進化。
+// 「静止で溜めて吸収 → 回避で返す」の攻守一体を、3 つの効果で組み立てている。
+
+/** 吸収フィールドの半径（溜め判定成立中のみ展開）。 */
+export const REFLECT_ABSORB_R = 46;
+/** 吸収できる上限。 */
+export const REFLECT_STOCK_MAX = 30;
+/** これ未満のストックでは解放しない（1〜2 発で撃って無駄にしないため）。 */
+export const REFLECT_MIN_TO_FIRE = 3;
+
+/**
+ * ジャスト成立から反射が続く窓。
+ * 無敵（7F）が切れた後もしばらく、当たった弾を被弾ではなく反射に変える。
+ * これが「ジャスト回避＋アルファ」の＋アルファ。
+ */
+export const REFLECT_WINDOW = f(0.5);
+
+/** 反転弾（弾いた弾・反射した弾）の性能。 */
+export const REFLECT_BULLET_DMG = 3.2;
+export const REFLECT_BULLET_SPEED = 7;
+/** 1 フレームあたりの旋回量（ラジアン）。強めに曲げて必ず敵へ届かせる。 */
+export const REFLECT_BULLET_HOMING = 0.17;
+
+/** 解放レーザー。ストック量で本数と威力が伸びる。 */
+export const REFLECT_LASER_FRAMES = f(0.33);
+export const REFLECT_LASER_HALFW = 9;
+/** ストック 1 発あたりの毎フレームダメージ。 */
+export const REFLECT_LASER_DPF_PER_STOCK = 0.45;
+/**
+ * 本数は必ず奇数にする。偶数だと中央が空いて真上に 1 本も飛ばず、
+ * 縦スクロールで一番当てたい方向が抜ける。
+ */
+export const REFLECT_LASER_MIN_RAYS = 3;
+export const REFLECT_LASER_MAX_RAYS = 9;
+/** 1 本あたりの開き角（ラジアン）。上方向を中心に扇状に開く。 */
+export const REFLECT_LASER_SPREAD = 0.3;
+
 // ---------------------------------------------------------------- 熟練度【仮】
 /** 特殊進化の出現条件：ジャスト成功回数。 */
 export const MASTERY_JUST_MIN = 10;

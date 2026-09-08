@@ -107,6 +107,19 @@ export class Sfx {
     this.noise(0.05, 0.08, 5200);
   }
 
+  /** 弾を吸収／反射したときの、位相がずれたような音。 */
+  reflect(): void {
+    this.tone('triangle', 1200, 0.06, 0.07, 2200);
+  }
+
+  /** 究極進化の解放。 */
+  reflectFire(rays: number): void {
+    this.tone('sawtooth', 140, 0.5, 0.26, 60);
+    this.tone('square', 300 + rays * 60, 0.3, 0.16, 1400);
+    this.tone('sine', 1800, 0.35, 0.12, 300, 0.03);
+    this.noise(0.45, 0.26, 4800);
+  }
+
   /** ジャスト回避：鋭い金属音。連続で決めるほど高く鳴る。 */
   just(combo = 1): void {
     const step = Math.min(5, combo - 1);

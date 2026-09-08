@@ -11,6 +11,9 @@ import {
   STICK_MAX_R,
   STICK_DEADZONE,
   SHUNEN_DURATION,
+  REFLECT_ABSORB_R,
+  REFLECT_WINDOW,
+  REFLECT_STOCK_MAX,
 } from '../sim/constants';
 import type { StickView } from '../input/pointer';
 import { buildTextures, type TextureSet } from './textures';
@@ -44,6 +47,7 @@ export class GameRenderer {
   private readonly miscPool = new SpritePool();
   private readonly beamGfx = new Graphics();
   private readonly laserGfx = new Graphics();
+  private readonly pLaserGfx = new Graphics();
   private readonly playerGfx = new Graphics();
   private readonly overlayGfx = new Graphics();
   private readonly fx: FxLayer;
@@ -92,6 +96,7 @@ export class GameRenderer {
       this.enemyPool.container,
       this.partPool.container,
       this.beamGfx,
+      this.pLaserGfx,
       this.pGlowPool.container,
       this.pBulletPool.container,
       this.laserGfx,
@@ -106,6 +111,7 @@ export class GameRenderer {
     );
 
     this.beamGfx.blendMode = 'add';
+    this.pLaserGfx.blendMode = 'add';
 
     this.txtScore = mkText(13, 0xffffff, 'right');
     this.txtStage = mkText(11, 0x9fb6c8, 'center');
@@ -207,6 +213,7 @@ export class GameRenderer {
     this.drawMisc(w);
     this.drawEnemies(w);
     this.drawBeams(w);
+    this.drawPlayerLasers(w);
     this.drawPlayerBullets(w);
     this.drawLasers(w);
     this.drawEnemyBullets(w);
@@ -368,6 +375,23 @@ export class GameRenderer {
     this.pGlowPool.end();
   }
 
+  /** 究極進化の解放レーザー。 */
+  private drawPlayerLasers(w: World): void {
+    const g = this.pLaserGfx;
+    g.clear();
+    for (const l of w.pLasers) {
+      if (!l.alive) continue;
+      // 出だしが太く、消え際に細くなる
+      const u = l.t / l.maxT;
+      const hw = l.halfW * (0.35 + u * 0.65);
+      const ex = l.x + Math.cos(l.angle) * l.len;
+      const ey = l.y + Math.sin(l.angle) * l.len;
+      g.moveTo(l.x, l.y).lineTo(ex, ey).stroke({ width: hw * 2.6, color: 0xff5ec8, alpha: 0.3 * u });
+      g.moveTo(l.x, l.y).lineTo(ex, ey).stroke({ width: hw * 1.3, color: 0xff9ef0, alpha: 0.6 * u });
+      g.moveTo(l.x, l.y).lineTo(ex, ey).stroke({ width: hw * 0.5, color: 0xffffff, alpha: 0.95 * u });
+    }
+  }
+
   private drawEnemyBullets(w: World): void {
     this.eBulletPool.begin();
     this.eGlowPool.begin();
@@ -474,11 +498,32 @@ export class GameRenderer {
       }
     }
 
-    // ディメンション・リフレクターの吸収ストック
-    if (w.reflectStock > 0) {
-      for (let i = 0; i < Math.min(20, w.reflectStock); i++) {
-        const a = (i / 20) * Math.PI * 2 + w.frame * 0.05;
-        g.circle(w.px + Math.cos(a) * 26, w.py + Math.sin(a) * 26, 2).fill({ color: 0xff9ef0, alpha: 0.9 });
+    // ディメンション・リフレクター
+    if (w.stats.evolutions.indexOf('reflector') >= 0) {
+      // 吸収フィールド：溜め中だけ張られる
+      if (w.chargeCommitted) {
+        g.circle(w.px, w.py, REFLECT_ABSORB_R).stroke({
+          width: 1.5,
+          color: 0xff9ef0,
+          alpha: 0.35 + 0.2 * Math.sin(w.frame * 0.18),
+        });
+        g.circle(w.px, w.py, REFLECT_ABSORB_R).fill({ color: 0xff5ec8, alpha: 0.05 });
+      }
+      // 反射窓：この間は当たった弾を撃ち返す
+      if (w.reflectWindow > 0) {
+        const t = w.reflectWindow / REFLECT_WINDOW;
+        g.circle(w.px, w.py, 24 + (1 - t) * 8).stroke({ width: 3, color: 0xff9ef0, alpha: 0.35 + t * 0.55 });
+        g.circle(w.px, w.py, 24 + (1 - t) * 8).fill({ color: 0xff5ec8, alpha: 0.08 * t });
+      }
+      // ストックは自機の周りを回る弾で見せる
+      const shown = Math.min(REFLECT_STOCK_MAX, w.reflectStock);
+      for (let i = 0; i < shown; i++) {
+        const a = (i / Math.max(8, shown)) * Math.PI * 2 + w.frame * 0.045;
+        const rr = 27 + (i % 3) * 4;
+        g.circle(w.px + Math.cos(a) * rr, w.py + Math.sin(a) * rr, 2.4).fill({
+          color: 0xff9ef0,
+          alpha: 0.95,
+        });
       }
     }
 
@@ -551,6 +596,7 @@ export class GameRenderer {
     }
     if (w.overdriveActive) buffs.push('OVERDRIVE ×3');
     if (w.stats.aegis > 0) buffs.push(`イージス ${w.stats.aegis}`);
+    if (w.reflectStock > 0) buffs.push(`反射 ${w.reflectStock}`);
     this.txtBuff.text = buffs.join('　');
     // 自機の定位置（画面下寄り）や操作ボタンと重ならないよう上に置く
     this.txtBuff.position.set((VIEW_W - this.txtBuff.width) / 2, 62);

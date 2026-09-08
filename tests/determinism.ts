@@ -324,5 +324,134 @@ import { JUST_SLOWMO, SHUNEN_ATK_MUL, SHUNEN_DURATION } from '../src/sim/constan
   check('スローを挟んでも決定論は保たれる', run() === run(), run());
 }
 
+// 究極進化（ディメンション・リフレクター）。
+// 「静止で吸収 → 回避で返す」の攻守一体が、3 つの効果として噛み合っているか。
+import { applyChoice } from '../src/sim/upgrades';
+import {
+  REFLECT_WINDOW,
+  REFLECT_STOCK_MAX,
+  REFLECT_LASER_MIN_RAYS,
+} from '../src/sim/constants';
+{
+  const hold: InputFrame = { down: true, dx: 0, dy: 0, flick: -1, release: false };
+  const up: InputFrame = { down: false, dx: 0, dy: 0, flick: -1, release: false };
+  const dodgeRight: InputFrame = { down: true, dx: 0, dy: 0, flick: 2, release: false };
+
+  const evolved = (seed: number): World => {
+    const w = new World(seed, 'beam');
+    applyChoice(w.stats, { kind: 'evolution', id: 'omega', name: '', desc: '', category: 'evolution', level: 0 });
+    applyChoice(w.stats, { kind: 'evolution', id: 'reflector', name: '', desc: '', category: 'evolution', level: 0 });
+    w.enemies.length = 0;
+    return w;
+  };
+  const bulletAt = (w: World, x: number, y: number) => {
+    w.eBullets.push({
+      alive: true, kind: 'bullet', x, y, vx: 0, vy: 0,
+      r: 4.2, life: 900, len: 0, angle: 0, warn: 0, deflect: 0, style: 1,
+    });
+  };
+
+  // (a) 回避中の弾きが、弾かれるのではなく反転弾になる
+  {
+    const w = evolved(11);
+    bulletAt(w, w.px + 88, w.py + 12);
+    const pb0 = w.pBullets.length;
+    for (let i = 0; i < FLICK_DURATION + 2; i++) {
+      w.update(i === 0 ? dodgeRight : hold);
+      w.drainFx();
+    }
+    const reflected = w.pBullets.filter((b) => b.style === 'reflect');
+    check('究極進化では弾きが反転弾になる', reflected.length > pb0 - pb0, `${reflected.length} 発`);
+    check('反転弾はホーミングする', reflected.every((b) => b.homing > 0));
+  }
+
+  // (b) ジャスト＋αの窓の間は、当たった弾が被弾ではなく反射になる
+  {
+    const w = evolved(12);
+    bulletAt(w, w.px + 20, w.py);
+    w.update(dodgeRight);
+    check('ジャストで反射窓が開く', w.reflectWindow === REFLECT_WINDOW, `${w.reflectWindow}F`);
+    const lives = w.lives;
+    let reflected = 0;
+    for (let f = 0; f < 12; f++) {
+      bulletAt(w, w.px, w.py);
+      const before = w.pBullets.length;
+      w.update(hold);
+      w.drainFx();
+      if (w.pBullets.length > before) reflected++;
+    }
+    check('窓の中の被弾は撃ち返しになる', reflected > 0 && w.lives === lives, `${reflected} 発 / 残機 ${w.lives}`);
+  }
+
+  // (c) 窓が切れたら普通に被弾する（無敵ではない）
+  {
+    const w = evolved(13);
+    bulletAt(w, w.px + 20, w.py);
+    w.update(dodgeRight);
+    for (let f = 0; f < REFLECT_WINDOW + FLICK_DURATION + 90; f++) {
+      w.update(hold);
+      w.drainFx();
+    }
+    check('窓は必ず閉じる', w.reflectWindow === 0);
+    const lives = w.lives;
+    for (let f = 0; f < 6; f++) {
+      bulletAt(w, w.px, w.py);
+      w.update(hold);
+      w.drainFx();
+    }
+    check('窓が切れたら普通に被弾する', w.lives < lives, `${lives} -> ${w.lives}`);
+  }
+
+  // (d) 解放レーザーは奇数本で、中央が必ず真上を向く
+  {
+    const w = evolved(14);
+    for (let f = 0; f < 90; f++) {
+      for (let i = 0; i < 3; i++) bulletAt(w, w.px + (i - 1) * 14, w.py + 10);
+      w.update(up);
+      w.drainFx();
+    }
+    check('吸収に上限がある', w.reflectStock <= REFLECT_STOCK_MAX, `${w.reflectStock}`);
+    const stock = w.reflectStock;
+    w.update(dodgeRight);
+    const rays = w.pLasers.length;
+    check('レーザーは奇数本', rays % 2 === 1 && rays >= REFLECT_LASER_MIN_RAYS, `${rays} 本`);
+    const up90 = w.pLasers.some((l) => Math.abs(l.angle + Math.PI / 2) < 1e-6);
+    check('中央の 1 本が真上を向く', up90);
+    check('解放でストックを使い切る', w.reflectStock === 0, `stock ${stock} -> ${w.reflectStock}`);
+  }
+
+  // (e) 臨界共鳴を撃っても吸収ストックは消えない（噛み合わせの修正点）
+  {
+    const w = evolved(15);
+    for (let f = 0; f < 90; f++) {
+      for (let i = 0; i < 3; i++) bulletAt(w, w.px + (i - 1) * 14, w.py + 10);
+      w.update(up);
+      w.drainFx();
+    }
+    const stock = w.reflectStock;
+    check('溜めも貯まっている', w.chargeFrames >= CHARGE_STAGES[0], `${Math.round(w.chargeFrames)}F`);
+    w.update({ down: false, dx: 0, dy: 0, flick: -1, release: true });
+    check('臨界共鳴を撃ってもストックは残る', w.reflectStock === stock, `${stock} -> ${w.reflectStock}`);
+    check('溜めだけが消費される', w.chargeFrames === 0);
+  }
+
+  // (f) 被弾したらストックも失う（リスクは残す）
+  {
+    const w = evolved(16);
+    for (let f = 0; f < 60; f++) {
+      for (let i = 0; i < 3; i++) bulletAt(w, w.px + (i - 1) * 14, w.py + 10);
+      w.update(up);
+      w.drainFx();
+    }
+    check('ストックがある', w.reflectStock > 0, `${w.reflectStock}`);
+    for (let f = 0; f < 8; f++) {
+      bulletAt(w, w.px, w.py);
+      w.update(hold);
+      w.drainFx();
+    }
+    check('被弾でストックを失う', w.reflectStock === 0);
+  }
+}
+
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILED`);
 if (failed > 0) process.exit(1);

@@ -13,6 +13,7 @@ export default defineConfig({
       input: [
         fileURLToPath(new URL('./determinism.ts', import.meta.url)),
         fileURLToPath(new URL('./balance.ts', import.meta.url)),
+        fileURLToPath(new URL('./measure.ts', import.meta.url)),
       ],
       output: { entryFileNames: '[name].mjs' },
     },
